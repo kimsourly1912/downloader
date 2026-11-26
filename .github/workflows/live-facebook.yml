@@ -1,0 +1,69 @@
+name: Live Facebook check
+
+on:
+  workflow_dispatch:
+    inputs:
+      facebook_link:
+        description: Public Facebook video or Reel link you have permission to test
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the Docker image
+        run: docker build -t downloader-prototype .
+      - name: Inspect, download, and decode
+        shell: bash
+        run: |
+          # Read the input from the event file so it is not printed in the step environment.
+          link=$(jq -er '.inputs.facebook_link' "$GITHUB_EVENT_PATH")
+          results=$(mktemp -d)
+          trap 'rm -rf -- "$results"' EXIT
+          mount="type=bind,source=$results,target=/output"
+          runner_user="$(id -u):$(id -g)"
+
+          report_failure() {
+            printf '%s failed. ' "$1"
+            case $(cat "$2") in
+              *"Paste an HTTPS Facebook"*) echo 'Unsupported link format.' ;;
+              *"HTTP Error 429"*) echo 'Facebook rate-limited the request.' ;;
+              *"HTTP Error 403"*) echo 'Facebook refused the request.' ;;
+              *[Ll]"ogin required"*|*"requires logging in"*|*[Ll]"og in"*) echo 'Facebook returned a sign-in requirement.' ;;
+              *"timed out"*) echo 'The request timed out.' ;;
+              *"Requested format is not available"*) echo 'The requested MP4 format was unavailable.' ;;
+              *) echo 'The extractor could not complete the request.' ;;
+            esac
+          }
+
+          if ! docker run --rm downloader-prototype inspect -- "$link" > "$results/inspect.log" 2>&1; then
+            report_failure 'Inspection' "$results/inspect.log"
+            exit 1
+          fi
+          echo 'Inspection succeeded. Detected source dimensions:'
+          { grep -Eo '[0-9]{2,5}x[0-9]{2,5}' "$results/inspect.log" || echo 'Dimensions not reported'; } | sort -u
+
+          if ! docker run --rm --user "$runner_user" --mount "$mount" \
+            downloader-prototype download -- "$link" > "$results/download.log" 2>&1; then
+            report_failure 'Download' "$results/download.log"
+            exit 1
+          fi
+
+          files=("$results"/*.mp4)
+          [[ ${#files[@]} -eq 1 && -f ${files[0]} ]]
+          media="/output/$(basename "${files[0]}")"
+          docker run --rm --network none --user "$runner_user" --mount "$mount,readonly" \
+            --entrypoint ffprobe downloader-prototype \
+            -v error -show_entries stream=codec_type,codec_name,width,height:format=duration,size -of json "$media"
+          docker run --rm --network none --user "$runner_user" --mount "$mount,readonly" \
+            --entrypoint ffmpeg downloader-prototype \
+            -nostdin -v error -xerror -i "$media" -map 0:v:0 -map '0:a:0?' -f null -
+          echo 'Download succeeded and the MP4 decoded.'
