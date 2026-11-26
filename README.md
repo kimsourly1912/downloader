@@ -2,6 +2,8 @@
 
 Downloader is a mobile-first web app for turning a pasted public Facebook video or Reel link into downloadable quality options. See the [MVP architecture](docs/architecture.md) and [live verification and deployment checks](docs/release-checks.md).
 
+The [Cloudflare beta guide](docs/cloudflare-beta.md) shows how to deploy the web image with Cloudflare Containers and give testers access.
+
 ## Run the web app
 
 The web image packages Nuxt, Python, `yt-dlp`, and FFmpeg. Build it and open `http://localhost:3000`.
