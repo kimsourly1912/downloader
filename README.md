@@ -1,6 +1,19 @@
 # Downloader
 
-Downloader is a mobile-first web app for turning a pasted public Facebook video or Reel link into downloadable quality options. This folder contains the command-line prototype for the first milestone and the [MVP architecture](docs/architecture.md). The prototype is for trusted operators testing videos they have permission to download.
+Downloader is a mobile-first web app for turning a pasted public Facebook video or Reel link into downloadable quality options. See the [MVP architecture](docs/architecture.md) and [live verification and deployment checks](docs/release-checks.md).
+
+## Run the web app
+
+The web image packages Nuxt, Python, `yt-dlp`, and FFmpeg. Build it and open `http://localhost:3000`.
+
+```sh
+docker build -f Dockerfile.web -t downloader-web .
+docker run --rm -p 127.0.0.1:3000:3000 downloader-web
+```
+
+For development, use Node 24, Python 3.12, FFmpeg, and the `yt-dlp` version in the Dockerfile. Install dependencies with `npm ci`, then run `npm run dev` from the repository root. Set `DOWNLOADER_PYTHON` to your Python executable if `python3` is unavailable or `yt-dlp` is installed in a virtual environment.
+
+Use `npm run typecheck`, `npm test`, and `npm run build` to verify changes. After building, `python3 tests/check_http.py` exercises the production API with generated clips. The CLI prototype below is available for direct experiments by operators testing videos they have permission to download.
 
 ## Run the prototype on Windows
 
