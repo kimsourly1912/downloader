@@ -20,6 +20,7 @@ FORMAT_ID = r"[A-Za-z0-9_.-]+"
 DEFAULT_FORMAT = (
     "bv*[ext=mp4][vcodec^=avc]+ba[ext=m4a][acodec^=mp4a]"
     "/b[ext=mp4][vcodec^=avc][acodec^=mp4a]"
+    "/b[ext=mp4][vcodec^=?avc][acodec^=?mp4a]"
 )
 
 
@@ -56,8 +57,8 @@ def format_selection(value: str) -> str:
     return value
 
 
-def run_extractor(url: str, *options: str, timeout: int) -> None:
-    subprocess.run(
+def run_extractor(url: str, *options: str, timeout: int, capture: bool = False):
+    return subprocess.run(
         [
             sys.executable, "-m", "yt_dlp", "--ignore-config", "--no-cache-dir", "--no-playlist",
             "--socket-timeout", "15", "--retries", "1", "--fragment-retries", "1",
@@ -65,19 +66,27 @@ def run_extractor(url: str, *options: str, timeout: int) -> None:
         ],
         check=True,
         timeout=timeout,
+        capture_output=capture,
+        text=True,
     )
 
 
-def download(url: str, selection: str, output_dir: Path) -> None:
+def download(url: str, selection: str, output_dir: Path, max_bytes: int | None = None) -> dict:
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="downloader-", dir=output_dir) as temp_dir:
         staging = Path(temp_dir)
         # yt-dlp treats percent signs in an output template as placeholders.
         template = str(staging).replace("%", "%%") + "/video.%(ext)s"
+        size_options = ("--max-filesize", str(max_bytes)) if max_bytes else ()
         run_extractor(url, "--format", selection, "--merge-output-format", "mp4",
-                      "--output", template, timeout=300)
+                      "--output", template, *size_options, timeout=150 if max_bytes else 300,
+                      capture=max_bytes is not None)
         media_path = staging / "video.mp4"
+        if not media_path.is_file():
+            raise ValueError("No compatible MP4 was produced.")
+        if max_bytes and media_path.stat().st_size > max_bytes:
+            raise ValueError("The selected file exceeds the download limit.")
         result = subprocess.run(
             [
                 "ffprobe", "-v", "error", "-of", "json",
@@ -90,13 +99,18 @@ def download(url: str, selection: str, output_dir: Path) -> None:
             timeout=30,
         )
         media = json.loads(result.stdout)
-        if not any(stream.get("codec_type") == "video" for stream in media.get("streams", [])):
+        streams = media.get("streams", [])
+        if not any(stream.get("codec_type") == "video" for stream in streams):
             raise ValueError("The downloaded file has no video stream.")
+        if selection == DEFAULT_FORMAT:
+            codecs = {(stream.get("codec_type"), stream.get("codec_name")) for stream in streams}
+            if not {("video", "h264"), ("audio", "aac")} <= codecs:
+                raise ValueError("The selected format does not contain H.264 video and AAC audio.")
         destination = output_dir / f"facebook-{uuid4().hex}.mp4"
         media["file"] = str(destination)
         media["sizeBytes"] = media_path.stat().st_size
         media_path.replace(destination)
-        print(json.dumps(media, indent=2))
+        return media
 
 
 def main() -> int:
@@ -114,7 +128,7 @@ def main() -> int:
         if args.command == "inspect":
             run_extractor(args.url, "--list-formats", timeout=60)
         else:
-            download(args.url, args.format or DEFAULT_FORMAT, args.output_dir)
+            print(json.dumps(download(args.url, args.format or DEFAULT_FORMAT, args.output_dir), indent=2))
     except subprocess.TimeoutExpired:
         print("The operation timed out. Try the same link again.", file=sys.stderr)
         return 1

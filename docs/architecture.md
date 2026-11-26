@@ -8,7 +8,7 @@ The first release offers only source resolutions the app can package into a play
 
 ## Deployment
 
-Keep the web MVP in a single repository and Docker deployment on a Node.js host. Nuxt and Nuxt UI render the mobile screen. Nitro serves the HTTP routes. Server-side services invoke pinned `yt-dlp` and FFmpeg binaries as subprocesses. The current prototype container packages the media tooling on its own to verify that it works on the intended host before wiring it into Nuxt.
+Keep the web MVP in a single repository and Docker deployment on a Node.js host. Nuxt and Nuxt UI render the mobile screen in the browser. Nitro serves the HTTP routes. Server-side services invoke pinned `yt-dlp` and FFmpeg binaries as subprocesses. `Dockerfile.web` packages the web app, and the original `Dockerfile` builds the standalone extractor prototype for direct checks.
 
 | Area | Responsibility |
 | --- | --- |
@@ -28,12 +28,12 @@ Map invalid or unsupported input to a link error, inaccessible videos to an unav
 
 ## Data and execution
 
-Keep short-lived download records in bounded memory for the first single-instance deployment. Each record holds the validated source URL, the selected format, and the expiry. Server restarts expire existing IDs, so the browser can inspect the link again. Use temporary disk space for merges and clear the files after download, failure, or cancellation. Stream compatible files to the client where possible.
+Keep short-lived download records in bounded memory for the first single-instance deployment. Each record holds the validated source URL, the selected format, and the expiry. Server restarts expire existing IDs, so the browser can inspect the link again. Stage the selected MP4 on temporary disk, validate the streams, send it from the server as a stream, and clear the files when the response closes or preparation fails. The browser buffers this response to show errors before handing it to the save dialog. The first version limits an output file to 64 MiB and known video durations to five minutes.
 
 Before enabling guest traffic, restrict the accepted Facebook link shapes and the media process's outbound access, including redirects and access to private networks. Pass trusted format selections and validated inputs as subprocess arguments. Set request rate, concurrency, file size, runtime, and disk limits. Log outcomes, timings, and transfer sizes to distinguish upstream failures from resource limits.
 
 ## Build order
 
-1. Verify the Docker prototype locally and on the intended beta host with one authorized public video and one Reel, including links copied from the mobile app.
-2. Connect the two API routes to the verified media workflow and add the mobile-first UI.
+1. Verify the Docker prototype and Nuxt flow with generated fixtures.
+2. Complete the [live video and Reel checks](release-checks.md) on the beta host using links copied from the Facebook app.
 3. Run a private beta and measure success rate across link types, download time, and outgoing traffic. Use those results to decide release limits and the next platform to evaluate.
