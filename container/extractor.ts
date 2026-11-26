@@ -114,7 +114,7 @@ export async function download(ticket: MediaTicket, signal: AbortSignal) {
     const path = join(folder, 'video.mp4')
     const file = await stat(path).catch(() => null)
     if (!file?.isFile() || file.size <= 0 || file.size > maxMediaBytes) throw new ExtractionFailure('NO_FORMAT')
-    const probe = JSON.parse(await run('ffprobe', ['-v', 'error', '-of', 'json', '-show_entries',
+    const probe = JSON.parse(await run('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-f', 'mov', '-of', 'json', '-show_entries',
       'stream=codec_type,codec_name,width,height:format=duration', path], 12_000, signal)) as {
       streams: Array<{ codec_type: string, codec_name: string, width?: number, height?: number }>
       format: { duration?: string }

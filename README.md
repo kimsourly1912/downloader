@@ -15,4 +15,4 @@ npm run build
 npm run test:runtime
 ```
 
-`npm run dev` is useful for UI development. For local Worker integration with real container tooling, build Nuxt and run `npx cf dev` from `cloudflare/` with Docker running. The [beta guide](docs/cloudflare-beta.md) covers Access configuration and deployment. Use the [architecture](docs/architecture.md) and [release checks](docs/release-checks.md) to understand the system boundaries and hosted verification.
+`npm run dev` is useful for UI development. For local Worker integration, build Nuxt and run `npx cf dev` from the repository root with Docker running. The [beta guide](docs/cloudflare-beta.md) covers Access configuration and deployment. See the [architecture](docs/architecture.md) and [release checks](docs/release-checks.md) for system boundaries and hosted verification.
