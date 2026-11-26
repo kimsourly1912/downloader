@@ -6,8 +6,10 @@
     "moduleResolution": "Bundler",
     "types": ["@cloudflare/workers-types", "node"],
     "strict": true,
+    "erasableSyntaxOnly": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "../cloudflare.config.ts", "../vite.config.ts", "../container/*.ts", "../shared/**/*.ts"]
 }

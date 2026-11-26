@@ -6,19 +6,34 @@
   "scripts": {
     "dev": "nuxt dev",
     "build": "nuxt build",
-    "typecheck": "nuxt typecheck",
-    "test": "python3 -m unittest discover -s tests"
+    "build:cloudflare": "npm run build && vite build",
+    "deploy:cloudflare": "cf deploy --prebuilt --mode production",
+    "lint": "eslint app server shared container cloudflare tests cloudflare.config.ts vite.config.ts",
+    "typecheck": "nuxt typecheck && tsc -p cloudflare/tsconfig.json",
+    "test": "node --test tests/unit.test.mjs",
+    "test:runtime": "node --test tests/runtime.test.mjs"
   },
   "dependencies": {
+    "@cloudflare/containers": "0.3.7",
     "@iconify-json/lucide": "^1.2.0",
     "@nuxt/ui": "4.13.1",
+    "jose": "^6.1.0",
     "nuxt": "4.6.3",
     "tailwindcss": "^4.1.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-rc.5",
+    "@cloudflare/workers-types": "5.20261125.1",
     "@types/node": "^24.0.0",
+    "cf": "1.0.0-rc.6",
+    "esbuild": "0.28.2",
+    "eslint": "^9.39.0",
+    "eslint-plugin-vue": "^10.8.0",
+    "miniflare": "5.20261123.1-beta",
     "typescript": "^5.9.0",
+    "typescript-eslint": "^8.57.0",
+    "vite": "8.4.0",
     "vue-tsc": "^3.1.0"
   }
 }

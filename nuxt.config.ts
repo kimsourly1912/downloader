@@ -16,7 +16,7 @@ export default defineNuxtConfig({
       meta: [{ name: 'description', content: 'Check a public Facebook video or Reel link and download an available MP4 quality.' }]
     }
   },
-  nitro: { preset: 'node-server' },
-  compatibilityDate: '2026-11-27',
+  nitro: { preset: 'cloudflare_module', cloudflare: { deployConfig: false } },
+  compatibilityDate: '2026-11-23',
   telemetry: false
 })
