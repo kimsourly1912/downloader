@@ -10,6 +10,14 @@ The Cloudflare Worker in `cloudflare/` forwards requests to one Basic container 
 
 ## Deploy the Worker and container
 
+### From GitHub Actions
+
+Use this path to deploy from a phone or a machine without Docker. In the repository's **Settings → Secrets and variables → Actions**, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as repository secrets. Use a Cloudflare API token scoped to the destination account with Workers Scripts Write and Workers Containers Write. Set up the tester Access policy from the Cloudflare dashboard.
+
+Open **Actions → Deploy Cloudflare beta → Run workflow**, and use the `main` branch. On the first run, the Worker returns `503` before starting the container until you configure its Access audience. After completing the Access steps below, add `DOWNLOADER_ACCESS_AUD` as a repository **variable** under **Settings → Secrets and variables → Actions**, and run the workflow again. The deployment step reports the Worker URL.
+
+### From a machine with Docker
+
 Run these commands from the repository root. `cf auth login` opens Cloudflare in a browser to approve CLI access.
 
 ```powershell
@@ -25,7 +33,7 @@ The first deployment creates `downloader-beta` and its `workers.dev` URL. With n
 
 1. In **Workers & Pages**, open `downloader-beta` and use [Cloudflare Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/#protect-one-worker) to protect this Worker's deployed URL. Allow only the testers' email addresses in the Access policy.
 2. In Zero Trust, open that Access application and copy its [Application Audience tag](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/#get-your-aud-tag).
-3. Pass the tag when you redeploy. The Worker checks the audience supplied by Cloudflare Access before starting or forwarding a request to the container.
+3. Pass the tag when you redeploy. The Worker checks the audience supplied by Cloudflare Access before starting or forwarding a request to the container. For GitHub Actions, set the repository variable as described above. For a local deploy, set the environment variable first.
 
 ```powershell
 $env:DOWNLOADER_ACCESS_AUD = 'paste-your-application-audience-tag'
