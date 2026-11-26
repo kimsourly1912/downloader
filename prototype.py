@@ -20,6 +20,7 @@ FORMAT_ID = r"[A-Za-z0-9_.-]+"
 DEFAULT_FORMAT = (
     "bv*[ext=mp4][vcodec^=avc]+ba[ext=m4a][acodec^=mp4a]"
     "/b[ext=mp4][vcodec^=avc][acodec^=mp4a]"
+    "/b[ext=mp4][vcodec^=?avc][acodec^=?mp4a]"
 )
 
 
@@ -90,8 +91,13 @@ def download(url: str, selection: str, output_dir: Path) -> None:
             timeout=30,
         )
         media = json.loads(result.stdout)
-        if not any(stream.get("codec_type") == "video" for stream in media.get("streams", [])):
+        streams = media.get("streams", [])
+        if not any(stream.get("codec_type") == "video" for stream in streams):
             raise ValueError("The downloaded file has no video stream.")
+        if selection == DEFAULT_FORMAT:
+            codecs = {(stream.get("codec_type"), stream.get("codec_name")) for stream in streams}
+            if not {("video", "h264"), ("audio", "aac")} <= codecs:
+                raise ValueError("The selected format does not contain H.264 video and AAC audio.")
         destination = output_dir / f"facebook-{uuid4().hex}.mp4"
         media["file"] = str(destination)
         media["sizeBytes"] = media_path.stat().st_size
