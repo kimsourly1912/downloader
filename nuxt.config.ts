@@ -3,6 +3,12 @@ export default defineNuxtConfig({
   modules: ['@nuxt/ui'],
   css: ['~/assets/css/main.css'],
   ui: { fonts: false, colorMode: false },
+  icon: {
+    clientBundle: {
+      icons: ['lucide:arrow-down-to-line', 'lucide:arrow-right', 'lucide:circle-alert', 'lucide:download',
+        'lucide:film', 'lucide:link', 'lucide:loader-circle', 'lucide:play']
+    }
+  },
   app: {
     head: {
       title: 'Downloader | Save a Facebook video',

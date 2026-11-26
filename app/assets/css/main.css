@@ -47,6 +47,12 @@ body {
   background: var(--green);
 }
 
+.brand-mark > span, .result-header > span, .input-icon, .download-button > span:first-child {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
 .platform {
   gap: .5rem;
   border: 1px solid var(--line);
@@ -150,6 +156,7 @@ body {
 }
 
 .empty-icon { width: 3.55rem; height: 3.55rem; margin-bottom: .88rem; border-radius: 1.07rem; font-size: 1.4rem; }
+.empty-icon > span, .video-placeholder > span { width: 1.4rem; height: 1.4rem; }
 .empty-icon-checking > span { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .empty-result p { margin: 0; font-weight: 700; }
