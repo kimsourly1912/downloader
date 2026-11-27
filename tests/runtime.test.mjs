@@ -126,7 +126,7 @@ test('public Worker streams compatible MP4s and falls back for unsafe CDN redire
     const file = await request(`/api/downloads/${quality.id}`)
     assert.equal(file.status, 200)
     if (quality.sourceQuality === 'hd') assert.match(file.headers.get('Server-Timing'), /facebook_cdn/)
-    else assert.equal(file.headers.get('Server-Timing'), null)
+    else assert.match(file.headers.get('Server-Timing'), /^container;dur=\d+;desc="upstream_status"$/)
     const filename = file.headers.get('Content-Disposition')
     assert.match(filename, /^attachment; filename="facebook-video-[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\.mp4"$/)
     filenames.add(filename)
