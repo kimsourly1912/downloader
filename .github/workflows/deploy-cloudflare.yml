@@ -7,10 +7,16 @@ on:
     paths:
       - .github/workflows/deploy-cloudflare.yml
       - cloudflare.config.ts
-      - container/main.ts
-      - 'server/api/downloads/**'
-      - 'server/api/videos/**'
-      - server/services/facebook-cdn.ts
+      - Dockerfile
+      - nuxt.config.ts
+      - package.json
+      - package-lock.json
+      - vite.config.ts
+      - 'app/**'
+      - 'cloudflare/*.ts'
+      - 'container/**'
+      - 'server/**'
+      - 'shared/**'
 
 permissions:
   contents: read
@@ -58,7 +64,7 @@ jobs:
         run: |
           curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 6 --max-time 15 \
             https://downloader.angder.app/ --output "$RUNNER_TEMP/downloader-home.html"
-          grep -q 'Save a Facebook video' "$RUNNER_TEMP/downloader-home.html"
+          grep -q 'Save a video' "$RUNNER_TEMP/downloader-home.html"
       - name: Verify the public inspection API
         run: |
           status=$(curl --silent --show-error --max-time 15 --write-out '%{http_code}' \

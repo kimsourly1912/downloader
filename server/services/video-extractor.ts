@@ -1,12 +1,14 @@
+import { resolveVideoLink } from '#shared/extraction'
 import type { ExtractorBinding, InspectionResult, MediaTicket, SourceVideo } from '#shared/extraction'
-import { chooseFormats } from '#shared/facebook-formats'
+import type { VideoPlatform } from '#shared/types/media'
+import { chooseFormats } from '#shared/video-formats'
 import { streamFacebookMp4 } from './facebook-cdn'
 import { extractorFailure, MediaFailure } from './media'
 
 export interface VideoExtractor {
   inspect(url: string, signal: AbortSignal): Promise<InspectionResult>
   remember(tickets: MediaTicket[]): Promise<string[]>
-  download(id: string, signal: AbortSignal): Promise<Response>
+  download(id: string, signal: AbortSignal): Promise<{ response: Response, platform: VideoPlatform }>
 }
 
 export async function containerExtractor(binding: ExtractorBinding | undefined, client: string): Promise<VideoExtractor> {
@@ -47,14 +49,18 @@ export async function containerExtractor(binding: ExtractorBinding | undefined, 
     async download(id, signal) {
       const ticket = await binding.lookup(id)
       if (!ticket) throw new MediaFailure('EXPIRED')
-      const direct = await streamFacebookMp4(ticket, signal)
-      if (direct.response) return direct.response
+      const link = resolveVideoLink(ticket.url)
+      if (!link) throw new MediaFailure('EXPIRED')
+      const { platform } = link
+      const direct = platform === 'facebook' ? await streamFacebookMp4(ticket, signal) : undefined
+      if (direct?.response) return { response: direct.response, platform }
       signal.throwIfAborted()
       const start = performance.now()
       const response = await invoke('/download', ticket, signal)
       const headers = new Headers(response.headers)
-      headers.set('Server-Timing', `container;dur=${Math.round(performance.now() - start)};desc="${direct.fallback}"`)
-      return new Response(response.body, { status: response.status, headers })
+      const detail = direct ? `;desc="${direct.fallback}"` : ''
+      headers.set('Server-Timing', `container;dur=${Math.round(performance.now() - start)}${detail}`)
+      return { response: new Response(response.body, { status: response.status, headers }), platform }
     }
   }
 }

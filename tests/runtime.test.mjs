@@ -108,7 +108,7 @@ test('public Worker streams compatible MP4s and falls back for unsafe CDN redire
   const { request, temp, upstreamRequests, fallbackRequests } = await setup(t, false)
   const homepage = await request('/')
   assert.equal(homepage.status, 200)
-  assert.match(await homepage.text(), /Save a Facebook video/)
+  assert.match(await homepage.text(), /Save a video/)
   const css = (await readdir('.output/public/_nuxt')).find(name => name.endsWith('.css'))
   assert.equal((await request(`/_nuxt/${css}`)).status, 200)
   assert.equal((await inspect(request, 'x'.repeat(4100))).status, 400)
@@ -117,6 +117,7 @@ test('public Worker streams compatible MP4s and falls back for unsafe CDN redire
   const result = await inspect(request, 'https://www.facebook.com/share/v/Fixture/')
   assert.equal(result.status, 200)
   const video = await result.json()
+  assert.equal(video.platform, 'facebook')
   assert.deepEqual(video.qualities.map(quality => quality.resolution.height), [360, 180])
   for (const quality of video.qualities) {
     const returned = await request(`/api/downloads/${quality.id}`)
@@ -162,7 +163,7 @@ test('shares inspections, gives cache hits fresh tickets, and keeps tickets acro
   const first = await Promise.all([inspect(request, url), inspect(request, url)])
   for (const res of first) assert.equal(res.status, 200)
   assert.deepEqual(first.map(res => res.headers.get('Server-Timing').match(/desc="(miss|shared)"/)?.[1]).sort(), ['miss', 'shared'])
-  assert.ok(first.some(res => /facebook_lookup;dur=\d+/.test(res.headers.get('Server-Timing'))))
+  assert.ok(first.some(res => /platform_lookup;dur=\d+/.test(res.headers.get('Server-Timing'))))
   assert.deepEqual(inspections, [url])
   const repeated = await inspect(request, url)
   assert.equal(repeated.headers.get('Server-Timing'), 'inspect_cache;desc="hit"')
@@ -188,7 +189,32 @@ test('shares inspections, gives cache hits fresh tickets, and keeps tickets acro
   assert.deepEqual(inspections, [url, failing, failing])
 })
 
-test('real authorized Facebook link through the production Worker and extractor adapter', {
+test('YouTube and TikTok use format selections, normalized links and platform filenames', { timeout: 45_000 }, async t => {
+  const { request, temp, inspections, upstreamRequests } = await setup(t, false)
+  const links = [
+    ['youtube', 'https://youtu.be/abcdefghijk?si=share', 'https://www.youtube.com/watch?v=abcdefghijk', 'i.ytimg.com'],
+    ['tiktok', 'https://vm.tiktok.com/Z123/?_r=1', 'https://vm.tiktok.com/Z123/', 'image.tiktokcdn.com']
+  ]
+  for (const [platform, link, normalized, thumbnail] of links) {
+    const response = await inspect(request, link)
+    assert.equal(response.status, 200, await response.clone().text())
+    const video = await response.json()
+    assert.equal(video.platform, platform)
+    assert.equal(new URL(video.thumbnail).hostname, thumbnail)
+    assert.equal(inspections.at(-1), normalized)
+    assert.deepEqual(video.qualities.map(quality => quality.resolution.height), [360, 180])
+    const download = await request(`/api/downloads/${video.qualities[0].id}`)
+    assert.equal(download.status, 200)
+    assert.match(download.headers.get('Content-Disposition'), new RegExp(`^attachment; filename="${platform}-video-[a-f0-9-]{36}\\.mp4"$`))
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), await readFile(join(temp, '360.mp4')))
+  }
+  const blocked = await inspect(request, 'https://www.youtube.com/shorts/bcdefghijkl')
+  assert.equal(blocked.status, 503)
+  assert.equal((await blocked.json()).data.code, 'UPSTREAM_RESTRICTED')
+  assert.deepEqual(upstreamRequests, [])
+})
+
+test('real authorized video link through the production Worker and extractor adapter', {
   timeout: 220_000, skip: !process.env.DOWNLOADER_TEST_URL
 }, async t => {
   const { request, temp } = await setup(t, true)
