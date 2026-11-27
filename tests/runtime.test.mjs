@@ -191,17 +191,18 @@ test('shares inspections, gives cache hits fresh tickets, and keeps tickets acro
 test('YouTube and TikTok use format selections, normalized links and platform filenames', { timeout: 45_000 }, async t => {
   const { request, temp, inspections, upstreamRequests } = await setup(t, false)
   const links = [
-    ['youtube', 'https://youtu.be/abcdefghijk?si=share', 'https://www.youtube.com/watch?v=abcdefghijk', 'i.ytimg.com'],
-    ['tiktok', 'https://vm.tiktok.com/Z123/?_r=1', 'https://vm.tiktok.com/Z123/', 'image.tiktokcdn.com']
+    ['youtube', 'https://youtu.be/abcdefghijk?si=share', 'https://www.youtube.com/watch?v=abcdefghijk', 'i.ytimg.com', [360, 180]],
+    // TikTok dimensions are not trusted, so it offers the best source format without a resolution label.
+    ['tiktok', 'https://vm.tiktok.com/Z123/?_r=1', 'https://vm.tiktok.com/Z123/', 'image.tiktokcdn.com', [null]]
   ]
-  for (const [platform, link, normalized, thumbnail] of links) {
+  for (const [platform, link, normalized, thumbnail, heights] of links) {
     const response = await inspect(request, link)
     assert.equal(response.status, 200, await response.clone().text())
     const video = await response.json()
     assert.equal(video.platform, platform)
     assert.equal(new URL(video.thumbnail).hostname, thumbnail)
     assert.equal(inspections.at(-1), normalized)
-    assert.deepEqual(video.qualities.map(quality => quality.resolution.height), [360, 180])
+    assert.deepEqual(video.qualities.map(quality => quality.resolution?.height ?? null), heights)
     const download = await request(`/api/downloads/${video.qualities[0].id}`)
     assert.equal(download.status, 200)
     assert.match(download.headers.get('Content-Disposition'), new RegExp(`^attachment; filename="${platform}-video-[a-f0-9-]{36}\\.mp4"$`))
