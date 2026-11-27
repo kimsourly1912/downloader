@@ -3,7 +3,7 @@ import { createReadStream } from 'node:fs'
 import { mkdtemp, rm, stat, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { facebookVideoFilename, formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
+import { formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
 import type { ExtractorError, MediaTicket, SourceFormat, SourceVideo } from '../shared/extraction.ts'
 
 export class ExtractionFailure extends Error {
@@ -133,7 +133,7 @@ export async function download(ticket: MediaTicket, signal: AbortSignal) {
     }
     const stream = createReadStream(path, { signal })
     stream.once('close', () => { void cleanup().catch(() => {}) })
-    return { stream, size: file.size, name: facebookVideoFilename() }
+    return { stream, size: file.size }
   } catch (error) {
     await cleanup().catch(() => {})
     throw error

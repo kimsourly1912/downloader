@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/deploy-cloudflare.yml
       - cloudflare.config.ts
+      - 'server/api/downloads/**'
 
 permissions:
   contents: read

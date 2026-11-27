@@ -12,7 +12,7 @@ The public app uses `downloader.angder.app`. Cloudflare creates its DNS record a
 
 ## GitHub Actions or local deployment
 
-For GitHub Actions, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as repository Actions secrets. Start **Deploy Downloader** from `main`. Changes to the deployment workflow or Cloudflare configuration on `main` also start a deploy. The deployment checks that the homepage responds without credentials.
+For GitHub Actions, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as repository Actions secrets. Start **Deploy Downloader** from `main`. Changes to the deployment workflow, Cloudflare configuration, or download routes on `main` also start a deploy. The deployment checks that the homepage responds without credentials and the API rejects unsupported links.
 
 For a local deployment, run these commands from the repository root with Docker running. Authenticate with Cloudflare using the browser flow.
 

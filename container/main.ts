@@ -50,7 +50,7 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
     const result = await download({ url, selection: data.selection, audioRequired: data.audioRequired,
       resolution: data.resolution, sizeBytes: null }, controller.signal)
     response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': result.size,
-      'Content-Disposition': `attachment; filename="${result.name}"`, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' })
+      'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' })
     await pipeline(result.stream, response)
   } catch (error) {
     if (!response.headersSent && !response.destroyed) {
