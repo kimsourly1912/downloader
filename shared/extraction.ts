@@ -53,6 +53,11 @@ export function facebookMediaUrl(value: unknown): string | undefined {
   }
 }
 
+export function facebookMediaExpiry(url: string): number | undefined {
+  const expires = new URL(url).searchParams.get('oe')
+  if (expires && /^[a-f\d]{8}$/i.test(expires)) return Number.parseInt(expires, 16) * 1000
+}
+
 export interface SourceFormat {
   id: string
   ext?: string
@@ -87,6 +92,17 @@ export interface MediaTicket extends MediaChoice {
 }
 
 export type ExtractorError = 'INVALID_LINK' | 'BUSY' | 'EXPIRED' | 'UNAVAILABLE' | 'NO_FORMAT' | 'TOO_LONG' | 'TOOL_UNAVAILABLE' | 'UPSTREAM_TIMEOUT' | 'UPSTREAM_ERROR'
+
+export interface InspectionTiming {
+  cache: 'hit' | 'miss' | 'shared'
+  container?: 'warm' | 'cold'
+  containerMs?: number
+  extractorMs?: number
+}
+
+export type InspectionResult = { timing: InspectionTiming } & (
+  { video: Omit<SourceVideo, 'formats' | 'live'> & { choices: MediaChoice[] } } | { failure: string | null }
+)
 
 export interface ExtractorBinding {
   consume(client: string): Promise<boolean>

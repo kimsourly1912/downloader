@@ -1,9 +1,10 @@
-import type { ExtractorBinding, MediaTicket, SourceVideo } from '#shared/extraction'
+import type { ExtractorBinding, InspectionResult, MediaTicket, SourceVideo } from '#shared/extraction'
+import { chooseFormats } from '#shared/facebook-formats'
 import { streamFacebookMp4 } from './facebook-cdn'
 import { extractorFailure, MediaFailure } from './media'
 
 export interface VideoExtractor {
-  inspect(url: string, signal: AbortSignal): Promise<SourceVideo>
+  inspect(url: string, signal: AbortSignal): Promise<InspectionResult>
   remember(tickets: MediaTicket[]): Promise<string[]>
   download(id: string, signal: AbortSignal): Promise<Response>
 }
@@ -26,7 +27,21 @@ export async function containerExtractor(binding: ExtractorBinding | undefined, 
 
   return {
     async inspect(url, signal) {
-      return await (await invoke('/inspect', { url }, signal)).json() as SourceVideo
+      signal.throwIfAborted()
+      try {
+        const response = await invoke('/inspect-cached', { url }, signal)
+        const result = await response.json() as InspectionResult
+        if (result.timing && ('video' in result || result.failure)) return result
+      } catch {
+        signal.throwIfAborted()
+      }
+      const start = performance.now()
+      const response = await invoke('/inspect', { url }, signal)
+      const source = await response.json() as SourceVideo
+      const choices = chooseFormats(source)
+      const timing = { cache: 'miss' as const, containerMs: Math.round(performance.now() - start) }
+      if (typeof choices === 'string') return { failure: choices, timing }
+      return { video: { title: source.title, thumbnail: source.thumbnail, duration: source.duration, choices }, timing }
     },
     remember: tickets => binding.remember(tickets),
     async download(id, signal) {
