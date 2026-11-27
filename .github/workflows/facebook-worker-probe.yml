@@ -32,6 +32,7 @@ jobs:
           node-version: '24'
           package-manager-cache: false
       - run: npm ci --no-audit --no-fund
+      - run: npx nuxt prepare
       - run: node --test tests/facebook-probe.test.mjs && npx tsc -p cloudflare/tsconfig.json
       - name: Build the isolated Worker
         working-directory: cloudflare/facebook-probe
