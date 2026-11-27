@@ -130,8 +130,20 @@ export async function inspectFacebook(input: unknown, signal: AbortSignal) {
     if (redirectCodes.has(response.status)) {
       const location = response.headers.get('Location')
       await response.body?.cancel()
-      const next = location && facebookUrl(new URL(location, url).href)
-      if (!next) throw new ProbeFailure('FACEBOOK_REDIRECT_UNSUPPORTED')
+      if (!location) throw new ProbeFailure('FACEBOOK_REDIRECT_MISSING')
+      const destination = new URL(location, url)
+      const next = facebookUrl(destination.href)
+      if (!next) {
+        const facebook = destination.hostname === 'facebook.com' || destination.hostname.endsWith('.facebook.com')
+        const path = destination.pathname
+        if (facebook && /^\/(?:login(?:\.php)?|login_require)(?:\/|$)/.test(path)) {
+          throw new ProbeFailure('FACEBOOK_LOGIN_REQUIRED')
+        }
+        if (facebook && /^\/(?:checkpoint|challenge|captcha)(?:\/|$)/.test(path)) {
+          throw new ProbeFailure('FACEBOOK_VERIFICATION_REQUIRED')
+        }
+        throw new ProbeFailure(facebook ? 'FACEBOOK_NON_VIDEO_REDIRECT' : 'FACEBOOK_OTHER_ORIGIN_REDIRECT')
+      }
       url = next
       hops++
       continue
