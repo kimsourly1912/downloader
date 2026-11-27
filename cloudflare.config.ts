@@ -3,7 +3,7 @@ import { bindings, defineConfig, defineContainer, exports } from 'cf/config'
 const workerName = 'downloader-beta'
 const container = defineContainer({
   name: 'downloader-beta',
-  image: { dockerfile: '../Dockerfile.web' },
+  image: { dockerfile: './Dockerfile' },
   instanceType: 'basic',
   maxInstances: 1
 })
@@ -12,16 +12,20 @@ export default defineConfig({
   containers: [container],
   worker: {
     name: workerName,
-    entrypoint: './worker.ts',
-    compatibilityDate: '2026-11-27',
+    entrypoint: './cloudflare/worker.ts',
+    compatibilityDate: '2026-11-23',
+    compatibilityFlags: ['nodejs_compat'],
     workersDev: true,
     previewUrls: false,
+    assets: { runWorkerFirst: true },
     exports: {
       DownloaderContainer: exports.durableObject({ storage: 'sqlite', container })
     },
     env: {
       DOWNLOADER: bindings.durableObject({ worker: workerName, exportName: 'DownloaderContainer' }),
-      BETA_ACCESS_AUD: bindings.text(process.env.DOWNLOADER_ACCESS_AUD?.trim() ?? '')
+      ASSETS: bindings.assets(),
+      BETA_ACCESS_AUD: bindings.text(process.env.DOWNLOADER_ACCESS_AUD?.trim() ?? ''),
+      BETA_ACCESS_TEAM: bindings.text(process.env.DOWNLOADER_ACCESS_TEAM?.trim() ?? '')
     }
   }
 })

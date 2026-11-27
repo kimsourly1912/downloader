@@ -1,30 +1,17 @@
-name: Cloudflare beta build
+name: Nuxt Worker and media container
 
 on:
   pull_request:
-    paths:
-      - 'cloudflare/**'
-      - '.dockerignore'
-      - 'Dockerfile.web*'
-      - '.github/workflows/cloudflare.yml'
   push:
     branches: [main]
-    paths:
-      - 'cloudflare/**'
-      - '.dockerignore'
-      - 'Dockerfile.web*'
-      - '.github/workflows/cloudflare.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: cloudflare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,6 +21,17 @@ jobs:
           node-version: '24'
           package-manager-cache: false
       - run: npm ci --no-audit --no-fund
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: npm run lint && npm run typecheck && npm test
+      - run: npm run build:cloudflare
+      - run: npm run test:runtime
+      - name: Verify the native extractor image
+        run: |
+          docker build -t downloader-extractor .
+          test "$(docker run --rm --network none --entrypoint yt-dlp downloader-extractor --version)" = 2026.11.23
+          container_id=$(docker run -d --network none downloader-extractor)
+          trap 'docker rm -f "$container_id" >/dev/null' EXIT
+          if ! docker exec "$container_id" curl --silent --show-error --fail --retry 8 --retry-all-errors --retry-delay 1 http://127.0.0.1:3000/; then
+            docker logs "$container_id"
+            exit 1
+          fi

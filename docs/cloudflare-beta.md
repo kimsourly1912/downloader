@@ -1,47 +1,30 @@
 # Deploy a private beta on Cloudflare
 
-The Cloudflare Worker in `cloudflare/` forwards requests to one Basic container built from the repository's `Dockerfile.web`. Both inspection and download go to the same container because download options are held in app memory. The container sleeps after ten minutes without activity. A container restart expires the options and users can check the link again.
+Nuxt and Nitro run as a Worker. The single Basic container starts when an authenticated request needs media tools and sleeps after ten idle minutes. The app streams bounded MP4 files without an R2 bucket.
 
-## Prerequisites
+## Deployment prerequisites
 
-- Workers Paid on the Cloudflare account.
-- Cloudflare access to deploy Workers and Containers and to manage Cloudflare Access for this beta Worker.
-- Docker Desktop running Linux containers, or a Docker engine on the deployment machine, plus Node.js 24. Run `docker info` to verify the engine.
+- Workers Paid on the destination account.
+- Workers Scripts Write and Workers Containers Write for the deployment credential. Setting up beta visitors also needs Cloudflare Access management rights.
+- Node.js 24 and a Docker engine for local deploys. GitHub Actions provides these for the repository deployment workflow.
 
-## Deploy the Worker and container
+## GitHub Actions or local deployment
 
-### From GitHub Actions
+For GitHub Actions, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as repository Actions secrets. Start **Deploy Cloudflare beta** from `main`. The build runs before the deploy step receives the token. Without Access settings the Worker denies requests and leaves the container idle.
 
-Use this path to deploy from a phone or a machine without Docker. In the repository's **Settings → Secrets and variables → Actions**, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as repository secrets. Use a Cloudflare API token scoped to the destination account with Workers Scripts Write and Workers Containers Write. Set up the tester Access policy from the Cloudflare dashboard.
-
-Open **Actions → Deploy Cloudflare beta → Run workflow**, and use the `main` branch. On the first run, the Worker returns `503` before starting the container until you configure its Access audience. After completing the Access steps below, add `DOWNLOADER_ACCESS_AUD` as a repository **variable** under **Settings → Secrets and variables → Actions**, and run the workflow again. The deployment step reports the Worker URL.
-
-### From a machine with Docker
-
-Run these commands from the repository root. `cf auth login` opens Cloudflare in a browser to approve CLI access.
+For a local deployment, run these commands from the repository root with Docker running. Authenticate with Cloudflare using the browser flow.
 
 ```powershell
-cd cloudflare
 npm ci
 npx cf auth login
-npm run deploy
+npm run build:cloudflare
+npm run deploy:cloudflare
 ```
 
-The first deployment creates `downloader-beta` and its `workers.dev` URL. With no Access audience configured, the Worker responds with `503` before starting the container. The Cloudflare build check in GitHub Actions builds the Worker and container without publishing them.
+## Enable beta access
 
-## Allow beta testers
+Protect the `downloader-beta` Worker URL with a Cloudflare Access application and allow the intended testers. Record its [Application Audience tag](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/#get-your-aud-tag) and the team's hostname, such as `example.cloudflareaccess.com`.
 
-1. In **Workers & Pages**, open `downloader-beta` and use [Cloudflare Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/#protect-one-worker) to protect this Worker's deployed URL. Allow only the testers' email addresses in the Access policy.
-2. In Zero Trust, open that Access application and copy its [Application Audience tag](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/#get-your-aud-tag).
-3. Pass the tag when you redeploy. The Worker checks the audience supplied by Cloudflare Access before starting or forwarding a request to the container. For GitHub Actions, set the repository variable as described above. For a local deploy, set the environment variable first.
+Set `DOWNLOADER_ACCESS_AUD` and `DOWNLOADER_ACCESS_TEAM` as repository Actions **variables**, then run the deployment workflow again. For a local deploy, export the same environment variables before both build and deployment. Access supplies the browser's identity. The Worker also verifies signed assertions for requests routed through the Static Assets router.
 
-```powershell
-$env:DOWNLOADER_ACCESS_AUD = 'paste-your-application-audience-tag'
-npm run deploy
-```
-
-On Bash, use `export DOWNLOADER_ACCESS_AUD='paste-your-application-audience-tag'` before deploying. Keep the value set for subsequent deployments so they retain the same Access audience. It identifies the Access app. Testers use Cloudflare Access only to enter the beta and use guest access to Facebook through Downloader.
-
-## Verify the deployed app
-
-Open the deployed URL in an incognito window and confirm Cloudflare presents the Access sign-in. Sign in as an allowed tester, then use the exact Reel link from the local verification and a regular public Facebook video. Save and open each MP4 on a phone. See the [remaining release checks](release-checks.md) before opening public access.
+Open the Worker URL as an invited tester. Check that an unauthenticated browser is challenged, then download the known Reel and a regular public video from the deployed app. [Release checks](release-checks.md) records the remaining hosted checks.

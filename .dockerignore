@@ -1,12 +1,4 @@
 *
 !Dockerfile
-!Dockerfile.web
-!app/**
-!server/**
+!container/**
 !shared/**
-!nuxt.config.ts
-!tsconfig.json
-!package.json
-!package-lock.json
-!prototype.py
-!web_media.py
