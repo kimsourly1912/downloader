@@ -54,16 +54,23 @@ export function chooseFormats(source: SourceVideo): MediaChoice[] {
 
     const resolution = positiveInteger(format.width) && positiveInteger(format.height)
       ? { width: format.width, height: format.height } : null
-    const key = resolution ? `${resolution.width}x${resolution.height}` : 'unknown'
+    const sourceQuality = format.id === 'hd' || format.id === 'sd' ? format.id : undefined
+    const key = resolution ? `${resolution.width}x${resolution.height}` : sourceQuality ?? 'unknown'
     const previous = choices.get(key)
     if (!previous || (audioRequired && !previous.audioRequired)) {
-      choices.set(key, { selection, sizeBytes, audioRequired, resolution })
+      choices.set(key, { selection, sizeBytes, audioRequired, resolution, sourceQuality })
     }
   }
   const dimension = (choice: MediaChoice) => choice.resolution ? Math.min(choice.resolution.width, choice.resolution.height) : 0
   const sorted = [...choices.values()].filter(choice => choice.resolution).sort((a, b) => dimension(b) - dimension(a))
-  const unknown = choices.get('unknown')
-  if (!sorted.length && unknown) sorted.push(unknown)
+  if (!sorted.length) {
+    for (const tier of ['hd', 'sd']) {
+      const choice = choices.get(tier)
+      if (choice) sorted.push(choice)
+    }
+    const unknown = choices.get('unknown')
+    if (!sorted.length && unknown) sorted.push(unknown)
+  }
   if (!sorted.length) throw new MediaFailure('NO_FORMAT')
   return sorted.slice(0, 8)
 }
@@ -78,6 +85,7 @@ export async function inspectVideo(input: unknown, extractor: VideoExtractor, si
     title: source.title,
     durationSeconds: source.duration === null ? null : Math.round(source.duration),
     thumbnail: source.thumbnail,
-    qualities: choices.map((choice, i) => ({ id: ids[i]!, sizeBytes: choice.sizeBytes, resolution: choice.resolution }))
+    qualities: choices.map((choice, i) => ({ id: ids[i]!, sizeBytes: choice.sizeBytes,
+      resolution: choice.resolution, sourceQuality: choice.sourceQuality }))
   }
 }

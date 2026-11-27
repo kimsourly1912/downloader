@@ -3,7 +3,7 @@ import { createReadStream } from 'node:fs'
 import { mkdtemp, rm, stat, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
+import { facebookVideoFilename, formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
 import type { ExtractorError, MediaTicket, SourceFormat, SourceVideo } from '../shared/extraction.ts'
 
 export class ExtractionFailure extends Error {
@@ -76,8 +76,11 @@ function metadata(value: string): SourceVideo {
   const data = JSON.parse(value) as Record<string, unknown>
   const formats: SourceFormat[] = []
   if (Array.isArray(data.formats)) {
-    for (const item of data.formats.slice(-128) as Record<string, unknown>[]) {
+    const rawFormats = data.formats.slice(-128) as Array<Record<string, unknown> | null>
+    const hdUrl = rawFormats.find(item => item?.format_id === 'hd')?.url
+    for (const item of rawFormats) {
       if (!item || typeof item.format_id !== 'string' || !formatId.test(item.format_id)) continue
+      if (item.format_id === 'sd' && typeof hdUrl === 'string' && hdUrl && item.url === hdUrl) continue
       const str = (key: string) => typeof item[key] === 'string' ? (item[key] as string).slice(0, 64) : undefined
       formats.push({ id: item.format_id, ext: str('ext'), protocol: str('protocol'), videoCodec: str('vcodec'),
         audioCodec: str('acodec'), width: positiveInteger(item.width) ? item.width : undefined,
@@ -128,10 +131,9 @@ export async function download(ticket: MediaTicket, signal: AbortSignal) {
     if (ticket.resolution && (ticket.resolution.width !== video.width || ticket.resolution.height !== video.height)) {
       throw new ExtractionFailure('NO_FORMAT')
     }
-    const resolution = video.width && video.height ? `-${video.width}x${video.height}` : ''
     const stream = createReadStream(path, { signal })
     stream.once('close', () => { void cleanup().catch(() => {}) })
-    return { stream, size: file.size, name: `facebook-video${resolution}.mp4` }
+    return { stream, size: file.size, name: facebookVideoFilename() }
   } catch (error) {
     await cleanup().catch(() => {})
     throw error

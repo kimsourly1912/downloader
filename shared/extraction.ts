@@ -1,4 +1,4 @@
-import type { Resolution } from './types/media.ts'
+import type { Resolution, SourceQuality } from './types/media.ts'
 
 export const maxMediaBytes = 64 * 1024 * 1024
 export const maxVideoSeconds = 300
@@ -37,6 +37,10 @@ export function positiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }
 
+export function facebookVideoFilename(): string {
+  return `facebook-video-${crypto.randomUUID()}.mp4`
+}
+
 export interface SourceFormat {
   id: string
   ext?: string
@@ -61,6 +65,7 @@ export interface MediaChoice {
   resolution: Resolution | null
   sizeBytes: number | null
   audioRequired: boolean
+  sourceQuality?: SourceQuality
 }
 
 export interface MediaTicket extends MediaChoice {
