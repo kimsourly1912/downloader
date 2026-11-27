@@ -58,7 +58,8 @@ export function chooseFormats(source: SourceVideo): MediaChoice[] {
     const key = resolution ? `${resolution.width}x${resolution.height}` : sourceQuality ?? 'unknown'
     const previous = choices.get(key)
     if (!previous || (audioRequired && !previous.audioRequired)) {
-      choices.set(key, { selection, sizeBytes, audioRequired, resolution, sourceQuality })
+      const mediaUrl = selection === format.id ? format.mediaUrl : undefined
+      choices.set(key, { selection, sizeBytes, audioRequired, resolution, sourceQuality, mediaUrl })
     }
   }
   const dimension = (choice: MediaChoice) => choice.resolution ? Math.min(choice.resolution.width, choice.resolution.height) : 0

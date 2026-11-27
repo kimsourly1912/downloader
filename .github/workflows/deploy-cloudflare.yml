@@ -8,6 +8,7 @@ on:
       - .github/workflows/deploy-cloudflare.yml
       - cloudflare.config.ts
       - 'server/api/downloads/**'
+      - server/services/facebook-cdn.ts
 
 permissions:
   contents: read
