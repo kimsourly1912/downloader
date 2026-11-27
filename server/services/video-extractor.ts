@@ -33,9 +33,13 @@ export async function containerExtractor(binding: ExtractorBinding | undefined, 
       const ticket = await binding.lookup(id)
       if (!ticket) throw new MediaFailure('EXPIRED')
       const direct = await streamFacebookMp4(ticket, signal)
-      if (direct) return direct
+      if (direct.response) return direct.response
       signal.throwIfAborted()
-      return invoke('/download', ticket, signal)
+      const start = performance.now()
+      const response = await invoke('/download', ticket, signal)
+      const headers = new Headers(response.headers)
+      headers.set('Server-Timing', `container;dur=${Math.round(performance.now() - start)};desc="${direct.fallback}"`)
+      return new Response(response.body, { status: response.status, headers })
     }
   }
 }

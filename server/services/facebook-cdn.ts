@@ -90,9 +90,9 @@ async function openMedia(url: string, signal: AbortSignal) {
   }
 }
 
-export async function streamFacebookMp4(ticket: MediaTicket, signal: AbortSignal): Promise<Response | null> {
+export async function streamFacebookMp4(ticket: MediaTicket, signal: AbortSignal) {
   const url = facebookMediaUrl(ticket.mediaUrl)
-  if (!url) return null
+  if (!url) return { fallback: 'no_url' } as const
   const started = performance.now()
   const connection = new AbortController()
   const headerDeadline = setTimeout(() => connection.abort(), 10_000)
@@ -103,9 +103,10 @@ export async function streamFacebookMp4(ticket: MediaTicket, signal: AbortSignal
     const upstream = await openMedia(url, upstreamSignal)
     reader = upstream?.body?.getReader()
     const length = Number(upstream?.headers.get('Content-Length'))
-    if (!reader || upstream?.status !== 200 || !positiveInteger(length) || length > maxMediaBytes ||
+    if (!upstream || upstream.status !== 200) return { fallback: 'upstream_status' } as const
+    if (!reader || !positiveInteger(length) || length > maxMediaBytes ||
         upstream.headers.get('Content-Type')?.split(';')[0]?.trim().toLowerCase() !== 'video/mp4' ||
-        ![null, 'identity'].includes(upstream.headers.get('Content-Encoding'))) return null
+        ![null, 'identity'].includes(upstream.headers.get('Content-Encoding'))) return { fallback: 'response_headers' } as const
 
     const source = reader
     const prefix = new Uint8Array(Math.min(length, metadataLimit))
@@ -113,12 +114,12 @@ export async function streamFacebookMp4(ticket: MediaTicket, signal: AbortSignal
     let bytes = 0
     while (bytes < prefix.length) {
       const { value, done } = await source.read()
-      if (done || value.length + bytes > length) return null
+      if (done || value.length + bytes > length) return { fallback: 'response_body' } as const
       buffered.push(value)
       prefix.set(value.subarray(0, prefix.length - bytes), bytes)
       bytes += value.length
       const valid = checkPrefix(prefix, Math.min(bytes, prefix.length), ticket)
-      if (valid === false) return null
+      if (valid === false) return { fallback: 'mp4_metadata' } as const
       if (valid) {
         const body = new ReadableStream<Uint8Array>({
           async pull(controller) {
@@ -147,12 +148,12 @@ export async function streamFacebookMp4(ticket: MediaTicket, signal: AbortSignal
           'X-Content-Type-Options': 'nosniff', 'Server-Timing': `facebook_cdn;dur=${Math.round(performance.now() - started)}`
         } })
         streaming = true
-        return response
+        return { response }
       }
     }
-    return null
+    return { fallback: 'mp4_metadata' } as const
   } catch {
-    return null
+    return { fallback: 'fetch_failed' } as const
   } finally {
     clearTimeout(headerDeadline)
     if (!streaming) {
