@@ -108,9 +108,12 @@ function metadata(value: string, platform: VideoPlatform): SourceVideo {
       const str = (key: string) => typeof item[key] === 'string' ? (item[key] as string).slice(0, 64) : undefined
       const mediaUrl = platform === 'facebook' && item.protocol === 'https' && !item.manifest_url && !item.fragments &&
         item.vcodec !== 'none' && item.acodec !== 'none' ? facebookMediaUrl(item.url) : undefined
+      // TikTok reports dimensions that can differ from the file it serves, such as 576x1024 for a 540x960 MP4.
+      // Leave them out so the quality label stays truthful and the download check does not reject the real file.
+      const dimensions = platform !== 'tiktok'
       formats.push({ id: item.format_id, ext: str('ext'), protocol: str('protocol'), videoCodec: str('vcodec'),
-        audioCodec: str('acodec'), width: positiveInteger(item.width) ? item.width : undefined,
-        height: positiveInteger(item.height) ? item.height : undefined,
+        audioCodec: str('acodec'), width: dimensions && positiveInteger(item.width) ? item.width : undefined,
+        height: dimensions && positiveInteger(item.height) ? item.height : undefined,
         sizeBytes: positiveInteger(item.filesize) ? item.filesize : undefined, mediaUrl })
     }
   }
