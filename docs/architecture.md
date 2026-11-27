@@ -16,6 +16,8 @@ The previous deployment put the Nuxt UI and Nitro API in the same Docker image a
 
 Nuxt builds with Nitro's `cloudflare_module` preset. The deployment entrypoint exports the container class alongside the generated Nitro Worker. Visitors can use the app and its API without signing in. The container handles internal inspection and download operations.
 
+Inspection keeps eligible Facebook CDN URLs on the server in the same short-lived tickets as format selections. During a download, the Worker checks the CDN response size and the MP4's initial metadata, then streams the body as it arrives. It uses the container when the URL is missing or expired, the file needs separate tracks merged, or the metadata is incompatible with direct streaming. The public API exposes only the ticket ID and quality details.
+
 The app uses one Basic container with a ten-minute idle timeout. Download tickets expire after ten minutes and may expire early if the Durable Object restarts. Both API and container validate Facebook link shapes. The container uses a deny-by-default outbound allowlist for Facebook and its media domains. Subprocess commands use fixed executables and arguments with no shell expansion, and format IDs must match the internal format grammar. The Node adapter runs at most two jobs at once and applies subprocess deadlines, file-size limits, and cleanup when a request closes. The response is streamed through Nitro. Files live only on the container's temporary disk, so the app needs no R2 bucket or permanent media storage.
 
 Keep the initial product to guest-accessible Facebook videos and Reels. Add a source only after checking real links, runtime permissions, and the outbound domains needed for that source.

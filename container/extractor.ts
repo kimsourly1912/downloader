@@ -3,7 +3,7 @@ import { createReadStream } from 'node:fs'
 import { mkdtemp, rm, stat, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
+import { facebookMediaUrl, formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
 import type { ExtractorError, MediaTicket, SourceFormat, SourceVideo } from '../shared/extraction.ts'
 
 export class ExtractionFailure extends Error {
@@ -82,10 +82,12 @@ function metadata(value: string): SourceVideo {
       if (!item || typeof item.format_id !== 'string' || !formatId.test(item.format_id)) continue
       if (item.format_id === 'sd' && typeof hdUrl === 'string' && hdUrl && item.url === hdUrl) continue
       const str = (key: string) => typeof item[key] === 'string' ? (item[key] as string).slice(0, 64) : undefined
+      const mediaUrl = item.protocol === 'https' && !item.manifest_url && !item.fragments &&
+        item.vcodec !== 'none' && item.acodec !== 'none' ? facebookMediaUrl(item.url) : undefined
       formats.push({ id: item.format_id, ext: str('ext'), protocol: str('protocol'), videoCodec: str('vcodec'),
         audioCodec: str('acodec'), width: positiveInteger(item.width) ? item.width : undefined,
         height: positiveInteger(item.height) ? item.height : undefined,
-        sizeBytes: positiveInteger(item.filesize) ? item.filesize : undefined })
+        sizeBytes: positiveInteger(item.filesize) ? item.filesize : undefined, mediaUrl })
     }
   }
   let thumbnail: string | null = null

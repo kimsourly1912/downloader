@@ -1,4 +1,5 @@
 import type { ExtractorBinding, MediaTicket, SourceVideo } from '#shared/extraction'
+import { streamFacebookMp4 } from './facebook-cdn'
 import { extractorFailure, MediaFailure } from './media'
 
 export interface VideoExtractor {
@@ -31,6 +32,9 @@ export async function containerExtractor(binding: ExtractorBinding | undefined, 
     async download(id, signal) {
       const ticket = await binding.lookup(id)
       if (!ticket) throw new MediaFailure('EXPIRED')
+      const direct = await streamFacebookMp4(ticket, signal)
+      if (direct) return direct
+      signal.throwIfAborted()
       return invoke('/download', ticket, signal)
     }
   }

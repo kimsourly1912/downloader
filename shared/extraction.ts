@@ -41,6 +41,18 @@ export function facebookVideoFilename(): string {
   return `facebook-video-${crypto.randomUUID()}.mp4`
 }
 
+export function facebookMediaUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 4096) return
+  try {
+    const url = new URL(value)
+    const cdn = url.hostname.endsWith('.fbcdn.net')
+    if (url.protocol === 'https:' && cdn && !url.username && !url.password && !url.port &&
+        !url.hash && url.pathname.toLowerCase().endsWith('.mp4')) return url.href
+  } catch {
+    return
+  }
+}
+
 export interface SourceFormat {
   id: string
   ext?: string
@@ -50,6 +62,7 @@ export interface SourceFormat {
   width?: number
   height?: number
   sizeBytes?: number
+  mediaUrl?: string
 }
 
 export interface SourceVideo {
@@ -66,6 +79,7 @@ export interface MediaChoice {
   sizeBytes: number | null
   audioRequired: boolean
   sourceQuality?: SourceQuality
+  mediaUrl?: string
 }
 
 export interface MediaTicket extends MediaChoice {

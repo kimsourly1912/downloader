@@ -19,7 +19,8 @@ async function setup(t, live) {
     await chmod(ytdlp, 0o700)
     for (const [width, height] of [[320, 180], [640, 360]]) {
       execFileSync('ffmpeg', ['-nostdin', '-v', 'error', '-f', 'lavfi', '-i', `testsrc2=s=${width}x${height}:r=15`,
-        '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '1', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-c:a', 'aac', join(temp, `${height}.mp4`)])
+        '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '1', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-c:a', 'aac',
+        '-movflags', '+faststart', join(temp, `${height}.mp4`)])
     }
   }
 
@@ -54,13 +55,29 @@ async function setup(t, live) {
           export class ContainerProxy extends WorkerEntrypoint {}` }))
       }
     }] })
+  const fallbackRequests = []
+  const upstreamRequests = []
   const runtime = new Miniflare(convertV4MiniflareOptions({ modules: true, script: bundle.outputFiles[0].text,
     compatibilityDate: '2026-11-23', compatibilityFlags: ['nodejs_compat'],
     durableObjects: { DOWNLOADER: { className: 'DownloaderContainer', useSQLite: true } },
+    outboundService: live ? undefined : async request => {
+      const url = new URL(request.url)
+      upstreamRequests.push(url.href)
+      if (url.href === 'https://video.fbcdn.net/standard.mp4') {
+        return new Response(null, { status: 302, headers: { Location: 'https://example.org/other.mp4' } })
+      }
+      assert.equal(url.href, 'https://video.fbcdn.net/high.mp4')
+      const bytes = await readFile(join(temp, '360.mp4'))
+      return new Response(bytes, { headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(bytes.length) } })
+    },
     serviceBindings: {
-      EXTRACTOR: request => fetch(new URL(new URL(request.url).pathname, origin), {
-        method: request.method, headers: request.headers, body: request.body, duplex: 'half'
-      }),
+      EXTRACTOR: request => {
+        const path = new URL(request.url).pathname
+        if (path === '/download') fallbackRequests.push(path)
+        return fetch(new URL(path, origin), {
+          method: request.method, headers: request.headers, body: request.body, duplex: 'half'
+        })
+      },
       ASSETS: async request => new Response(await readFile(resolve('.output/public', `.${new URL(request.url).pathname}`)))
     }
   }))
@@ -68,15 +85,15 @@ async function setup(t, live) {
   const request = (path, options = {}) => runtime.dispatchFetch(`https://downloader.test${path}`, {
     ...options, headers: { Accept: 'application/json', ...options.headers }
   })
-  return { request, temp }
+  return { request, temp, upstreamRequests, fallbackRequests }
 }
 
 function inspect(request, url) {
   return request('/api/videos/inspect', { method: 'POST', body: JSON.stringify({ url }), headers: { 'Content-Type': 'application/json' } })
 }
 
-test('public Worker serves the app and streams valid files from its container binding', { timeout: 45_000 }, async t => {
-  const { request, temp } = await setup(t, false)
+test('public Worker streams compatible MP4s and falls back for unsafe CDN redirects', { timeout: 45_000 }, async t => {
+  const { request, temp, upstreamRequests, fallbackRequests } = await setup(t, false)
   const homepage = await request('/')
   assert.equal(homepage.status, 200)
   assert.match(await homepage.text(), /Save a Facebook video/)
@@ -104,9 +121,12 @@ test('public Worker serves the app and streams valid files from its container bi
   assert.ok(qualities.every(quality => quality.resolution === null))
 
   const filenames = new Set()
+  const previousFallbacks = fallbackRequests.length
   for (const quality of [qualities[0], qualities[1], qualities[0]]) {
     const file = await request(`/api/downloads/${quality.id}`)
     assert.equal(file.status, 200)
+    if (quality.sourceQuality === 'hd') assert.match(file.headers.get('Server-Timing'), /facebook_cdn/)
+    else assert.equal(file.headers.get('Server-Timing'), null)
     const filename = file.headers.get('Content-Disposition')
     assert.match(filename, /^attachment; filename="facebook-video-[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\.mp4"$/)
     filenames.add(filename)
@@ -114,6 +134,10 @@ test('public Worker serves the app and streams valid files from its container bi
     assert.deepEqual(Buffer.from(await file.arrayBuffer()), await readFile(join(temp, `${height}.mp4`)))
   }
   assert.equal(filenames.size, 3)
+  assert.equal(fallbackRequests.length, previousFallbacks + 1)
+  assert.deepEqual(upstreamRequests, [
+    'https://video.fbcdn.net/high.mp4', 'https://video.fbcdn.net/standard.mp4', 'https://video.fbcdn.net/high.mp4'
+  ])
 
   const duplicate = await inspect(request, 'https://www.facebook.com/share/r/SourceQualityDuplicate/')
   assert.equal(duplicate.status, 200)
@@ -135,4 +159,5 @@ test('real authorized Facebook link through the production Worker and extractor 
   await writeFile(path, Buffer.from(await file.arrayBuffer()))
   execFileSync('ffmpeg', ['-nostdin', '-v', 'error', '-xerror', '-i', path, '-map', '0:v:0', '-map', '0:a:0', '-f', 'null', '-'])
   console.log(file.headers.get('Content-Disposition'))
+  console.log(file.headers.get('Server-Timing') ?? 'Used container fallback')
 })
