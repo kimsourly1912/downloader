@@ -7,7 +7,10 @@ export default defineEventHandler(async (event) => {
     const url = await readLink(event)
     return await inspectVideo(url, await extractor(), signal, timing => {
       const metrics = [`inspect_cache;desc="${timing.cache}"`]
-      if (timing.extractorMs !== undefined) metrics.push(`platform_lookup;dur=${timing.extractorMs}`)
+      if (timing.extractorMs !== undefined) {
+        const detail = timing.diagnostic ? `;desc="${timing.diagnostic}"` : ''
+        metrics.push(`platform_lookup;dur=${timing.extractorMs}${detail}`)
+      }
       if (timing.containerMs !== undefined) {
         const overhead = Math.max(0, timing.containerMs - (timing.extractorMs ?? 0))
         const detail = timing.container ? `;desc="${timing.container}"` : ''

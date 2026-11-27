@@ -10,11 +10,32 @@ import type { VideoPlatform } from '../shared/types/media.ts'
 
 export class ExtractionFailure extends Error {
   readonly code: ExtractorError
+  readonly diagnostic?: string
 
-  constructor(code: ExtractorError) {
+  constructor(code: ExtractorError, diagnostic?: string) {
     super(code)
     this.code = code
+    this.diagnostic = diagnostic
   }
+}
+
+function upstreamFailure(stderr: string): ExtractionFailure {
+  const error = stderr.trim().split('\n').findLast(line => line.startsWith('ERROR:')) ?? stderr
+  const http = error.match(/(?:HTTP Error|HTTP\/\S+) ([45]\d{2})\b/i)?.[1]
+  if (http) return new ExtractionFailure('UPSTREAM_ERROR', `http-${http}`)
+  if (/certificate verify|certificate problem|self[- ]signed certificate/i.test(error)) return new ExtractionFailure('UPSTREAM_ERROR', 'certificate')
+  if (/timed?\s*out|timeout was reached|curl:\s*\(28\)/i.test(error)) return new ExtractionFailure('UPSTREAM_TIMEOUT', 'network-timeout')
+  if (/\b(?:SSL|TLS)\b/i.test(error)) return new ExtractionFailure('UPSTREAM_ERROR', 'tls')
+  if (/failed to connect|could not resolve|connection reset|connection refused|server closed connection/i.test(error)) {
+    return new ExtractionFailure('UPSTREAM_ERROR', 'connection')
+  }
+  if (/unable to (?:extract challenge data|solve JS challenge)|missing challenge cookie/i.test(error)) {
+    return new ExtractionFailure('UPSTREAM_ERROR', 'challenge')
+  }
+  if (/unable to extract|unsupported url|video not available|unable to decode/i.test(error)) {
+    return new ExtractionFailure('UPSTREAM_ERROR', 'unexpected-content')
+  }
+  return new ExtractionFailure('UPSTREAM_ERROR', 'unknown')
 }
 
 const commonArgs = ['--ignore-config', '--no-cache-dir', '--no-plugin-dirs', '--no-playlist',
@@ -81,7 +102,7 @@ function run(executable: string, args: string[], timeout: number, signal: AbortS
       if (/requested format is not available|file too large|file size limit/i.test(details)) {
         return reject(new ExtractionFailure('NO_FORMAT'))
       }
-      reject(new ExtractionFailure('UPSTREAM_ERROR'))
+      reject(upstreamFailure(details))
     })
   })
 }

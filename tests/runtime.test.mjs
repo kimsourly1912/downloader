@@ -211,6 +211,10 @@ test('YouTube and TikTok use format selections, normalized links and platform fi
   const blocked = await inspect(request, 'https://www.youtube.com/shorts/bcdefghijkl')
   assert.equal(blocked.status, 503)
   assert.equal((await blocked.json()).data.code, 'UPSTREAM_RESTRICTED')
+  const upstream = await inspect(request, 'https://www.tiktok.com/@test/video/429')
+  assert.equal(upstream.status, 502)
+  assert.match(upstream.headers.get('Server-Timing'), /platform_lookup;dur=\d+;desc="http-429"/)
+  assert.doesNotMatch(await upstream.text(), /secret=private|Too Many Requests/)
   assert.deepEqual(upstreamRequests, [])
 })
 
