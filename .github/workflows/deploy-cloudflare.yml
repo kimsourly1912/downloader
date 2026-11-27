@@ -8,6 +8,7 @@ on:
       - .github/workflows/deploy-cloudflare.yml
       - cloudflare.config.ts
       - 'server/api/downloads/**'
+      - 'server/api/videos/**'
       - server/services/facebook-cdn.ts
 
 permissions:
@@ -44,6 +45,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run lint && npm run typecheck && npm test
       - name: Build Worker and container
+        env:
+          DOWNLOADER_IDLE_MINUTES: ${{ vars.DOWNLOADER_IDLE_MINUTES }}
         run: npm run build:cloudflare
       - name: Deploy the verified build
         env:
