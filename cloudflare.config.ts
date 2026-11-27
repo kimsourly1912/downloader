@@ -24,8 +24,7 @@ export default defineConfig({
     },
     env: {
       DOWNLOADER: bindings.durableObject({ worker: workerName, exportName: 'DownloaderContainer' }),
-      ASSETS: bindings.assets(),
-      DOWNLOADER_IDLE_MINUTES: bindings.text(process.env.DOWNLOADER_IDLE_MINUTES === '10' ? '10' : '2')
+      ASSETS: bindings.assets()
     }
   }
 })
