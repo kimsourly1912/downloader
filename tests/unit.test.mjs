@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
+import { once } from 'node:events'
+import { request } from 'node:http'
 import { test } from 'node:test'
-import { facebookUrl, resolveVideoLink, validSelection } from '../shared/extraction.ts'
+import { publicAddress, startEgressProxy, tunnelTarget } from '../container/egress-proxy.ts'
+import { allowedExtractionHost, facebookUrl, resolveVideoLink, validSelection } from '../shared/extraction.ts'
 
 test('allows supported Facebook URLs and rejects non-video or unsafe destinations', () => {
   for (const path of ['/share/v/Video_Abc/', '/share/r/Reel_Abc/', '/watch/?v=123', '/reel/123/', '/page/videos/123']) {
@@ -44,4 +47,56 @@ test('only accepts literal IDs and optional audio pairing', () => {
   for (const value of ['', '+', 'hd,sd', 'a+b+c', 'a[height=720]', 'a;whoami', '$HOME', 'a b', 'hd\n']) {
     assert.equal(validSelection(value), false)
   }
+})
+
+test('egress allowlist matches platform names and rejects lookalikes and literals', () => {
+  for (const host of ['www.youtube.com', 'rr2---sn-2imern7r.googlevideo.com', 'youtu.be', 'v16-webapp-prime.us.tiktok.com',
+    'v19.tiktokcdn-us.com', 'video.xx.fbcdn.net', 'WWW.TIKTOK.COM.']) {
+    assert.ok(allowedExtractionHost(host), host)
+  }
+  for (const host of ['googlevideo.com', 'eviltiktok.com', 'www.tiktok.com.evil.test', 'localhost', '127.0.0.1',
+    '[::1]', 'www.youtube.com:443', 'a..youtube.com', '']) {
+    assert.equal(allowedExtractionHost(host), false, host)
+  }
+  assert.equal(tunnelTarget('www.tiktok.com:443'), 'www.tiktok.com')
+  for (const target of ['www.tiktok.com:80', 'www.tiktok.com', '142.250.0.1:443', '[2a00:1450::1]:443', 'example.com:443', undefined]) {
+    assert.equal(tunnelTarget(target), null, String(target))
+  }
+})
+
+test('egress only connects to public addresses', () => {
+  for (const [address, family] of [['142.250.72.14', 4], ['2a00:1450:4001::200e', 6]]) assert.ok(publicAddress(address, family), address)
+  for (const [address, family] of [['127.0.0.1', 4], ['10.1.2.3', 4], ['172.20.0.1', 4], ['192.168.1.1', 4], ['169.254.169.254', 4],
+    ['100.100.0.1', 4], ['0.0.0.0', 4], ['::1', 6], ['::', 6], ['::ffff:127.0.0.1', 6], ['fd00::1', 6], ['fe80::1', 6],
+    ['64:ff9b::a00:1', 6], ['2002:a00:1::', 6], ['1.1.1.1', 0]]) {
+    assert.equal(publicAddress(address, family), false, address)
+  }
+})
+
+test('egress proxy refuses plain HTTP, disallowed targets, and private DNS answers', async (t) => {
+  const answers = { 'www.tiktok.com': [{ address: '142.250.72.14', family: 4 }, { address: '10.0.0.5', family: 4 }],
+    'www.youtube.com': [{ address: '127.0.0.1', family: 4 }] }
+  const resolved = []
+  const proxy = await startEgressProxy({ resolve: async (host) => { resolved.push(host); return answers[host] ?? [] } })
+  t.after(() => proxy.close())
+  const { port } = new URL(proxy.url)
+
+  async function tunnel(path) {
+    const pending = request({ host: '127.0.0.1', port, method: 'CONNECT', path })
+    pending.end()
+    const [response, socket] = await once(pending, 'connect')
+    socket.destroy()
+    return response.statusCode
+  }
+  for (const target of ['example.com:443', 'www.tiktok.com:80', '127.0.0.1:443', 'www.tiktok.com:443', 'www.youtube.com:443']) {
+    assert.equal(await tunnel(target), 403, target)
+  }
+  assert.equal(await tunnel('www.facebook.com:443'), 502)
+  assert.deepEqual(resolved, ['www.tiktok.com', 'www.youtube.com', 'www.facebook.com'])
+
+  const plain = request({ host: '127.0.0.1', port, path: 'http://www.youtube.com/' })
+  plain.end()
+  const [response] = await once(plain, 'response')
+  response.resume()
+  assert.equal(response.statusCode, 405)
 })

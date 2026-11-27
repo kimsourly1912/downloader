@@ -7,7 +7,16 @@ export const extractionHosts = [
   'youtube.com', '*.youtube.com', 'youtu.be', 'youtubei.googleapis.com', '*.googlevideo.com',
   'tiktok.com', '*.tiktok.com', '*.tiktokcdn.com', '*.tiktokcdn-us.com'
 ]
-export const invalidLinkMessage = 'Paste a public Facebook, YouTube, or TikTok video link.'
+const dnsName = /^(?=.{1,253}$)(?:[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?\.)+[a-z]{2,63}$/
+
+/** Matches a DNS name against `extractionHosts`, where `*.example.com` covers subdomains only. */
+export function allowedExtractionHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '')
+  if (!dnsName.test(host)) return false
+  return extractionHosts.some(pattern => pattern.startsWith('*.') ? host.endsWith(pattern.slice(1)) : host === pattern)
+}
+
+export const invalidLinkMessage ='Paste a public Facebook, YouTube, or TikTok video link.'
 const facebookHosts = new Set(['facebook.com', 'www.facebook.com', 'm.facebook.com', 'web.facebook.com'])
 const youtubeHosts = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com'])
 const tiktokHosts = new Set(['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'])

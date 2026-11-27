@@ -17,7 +17,8 @@ RUN apt-get update \
 WORKDIR /app
 COPY container ./container
 COPY shared ./shared
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 USER node
 EXPOSE 3000
 CMD ["node", "container/main.ts"]

@@ -4,6 +4,8 @@ import { copyFile } from 'node:fs/promises'
 const args = process.argv.slice(2)
 const source = new URL(args.at(-1))
 const youtube = source.hostname === 'www.youtube.com'
+// The adapter must send all extractor traffic through its loopback egress proxy.
+if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(args[args.indexOf('--proxy') + 1] ?? '')) process.exit(3)
 if (source.pathname === '/@test/video/429') {
   console.error('ERROR: [tiktok] Unable to download webpage: HTTP Error 429: Too Many Requests https://www.tiktok.com/?secret=private')
   process.exit(1)
