@@ -29,6 +29,9 @@ jobs:
         run: |
           docker build -t downloader-extractor .
           test "$(docker run --rm --network none --entrypoint yt-dlp downloader-extractor --version)" = 2026.11.23
-          container_id=$(docker run --rm -d -p 127.0.0.1::3000 downloader-extractor)
-          trap 'docker stop "$container_id"' EXIT
-          curl --fail --retry 6 --retry-connrefused --retry-delay 1 "http://$(docker port "$container_id" 3000/tcp)"
+          container_id=$(docker run -d --network none downloader-extractor)
+          trap 'docker rm -f "$container_id" >/dev/null' EXIT
+          if ! docker exec "$container_id" curl --silent --show-error --fail --retry 8 --retry-all-errors --retry-delay 1 http://127.0.0.1:3000/; then
+            docker logs "$container_id"
+            exit 1
+          fi
