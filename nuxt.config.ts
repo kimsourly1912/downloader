@@ -11,9 +11,9 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: 'Downloader | Save a Facebook video',
+      title: 'Downloader | Save a video',
       htmlAttrs: { lang: 'en' },
-      meta: [{ name: 'description', content: 'Check a public Facebook video or Reel link and download an available MP4 quality.' }]
+      meta: [{ name: 'description', content: 'Check a public Facebook, YouTube, or TikTok video link and download an available MP4 quality.' }]
     }
   },
   nitro: { preset: 'cloudflare_module', cloudflare: { deployConfig: false } },

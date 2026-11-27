@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { facebookVideoFilename } from '#shared/extraction'
+import { invalidLinkMessage, videoFilename } from '#shared/extraction'
+import { platformNames } from '#shared/types/media'
 import type { DownloadQuality, InspectedVideo } from '#shared/types/media'
 
 const link = ref('')
@@ -44,7 +45,7 @@ function errorMessage(value: unknown, fallback: string) {
 
 async function inspect() {
   if (!link.value.trim()) {
-    error.value = 'Paste a Facebook video or Reel link.'
+    error.value = invalidLinkMessage
     field.value?.focus()
     return
   }
@@ -104,7 +105,7 @@ async function download(quality: DownloadQuality) {
     const url = URL.createObjectURL(file)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] || facebookVideoFilename()
+    anchor.download = response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] || videoFilename(video.value?.platform)
     document.body.append(anchor)
     anchor.click()
     anchor.remove()
@@ -130,21 +131,21 @@ async function download(quality: DownloadQuality) {
         <span class="brand-mark"><UIcon name="i-lucide-arrow-down-to-line" aria-hidden="true" /></span>
         Downloader
       </a>
-      <span class="platform"><span class="platform-dot" />Facebook videos &amp; Reels</span>
+      <span class="platform"><span class="platform-dot" />Facebook · YouTube · TikTok</span>
     </div>
   </header>
 
   <main class="workspace">
     <section class="form-panel" aria-labelledby="page-title">
-      <h1 id="page-title">Save a Facebook video.</h1>
-      <p class="intro">Paste a public video or Reel link and download it in an available quality.</p>
+      <h1 id="page-title">Save a video.</h1>
+      <p class="intro">Paste a public video link and download it in an available quality.</p>
 
       <form class="link-form" @submit.prevent="inspect">
-        <label for="facebook-link">Facebook link</label>
+        <label for="video-link">Video link</label>
         <div class="link-entry">
           <UIcon class="input-icon" name="i-lucide-link" aria-hidden="true" />
           <input
-            id="facebook-link" ref="field" v-model="link" type="text" inputmode="url"
+            id="video-link" ref="field" v-model="link" type="text" inputmode="url"
             autocomplete="off" autocapitalize="off" :spellcheck="false" maxlength="2048"
             placeholder="Paste your video link here" aria-describedby="link-help"
           >
@@ -156,7 +157,7 @@ async function download(quality: DownloadQuality) {
           {{ inspecting ? 'Checking link…' : 'Check video' }}
           <UIcon v-if="!inspecting" name="i-lucide-arrow-right" aria-hidden="true" />
         </UButton>
-        <p id="link-help" class="help-text">Copy the link using Share on a public Facebook video or Reel.</p>
+        <p id="link-help" class="help-text">Copy a public video link from Facebook, YouTube, or TikTok.</p>
       </form>
 
       <div v-if="error" role="alert" class="notice error-notice">
@@ -179,7 +180,7 @@ async function download(quality: DownloadQuality) {
           <span v-else class="video-placeholder"><UIcon name="i-lucide-play" aria-hidden="true" /></span>
           <div>
             <h3>{{ video.title }}</h3>
-            <p>Facebook<span v-if="video.durationSeconds"> · {{ durationLabel(video.durationSeconds) }}</span></p>
+            <p>{{ platformNames[video.platform] }}<span v-if="video.durationSeconds"> · {{ durationLabel(video.durationSeconds) }}</span></p>
           </div>
         </div>
         <ul class="quality-list" aria-label="Available qualities">

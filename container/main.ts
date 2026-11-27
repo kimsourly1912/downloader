@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { pipeline } from 'node:stream/promises'
-import { facebookUrl, positiveInteger, validSelection } from '../shared/extraction.ts'
+import { positiveInteger, resolveVideoLink, validSelection } from '../shared/extraction.ts'
 import type { MediaTicket } from '../shared/extraction.ts'
 import { download, ExtractionFailure, inspect, loadCloudflareCa } from './extractor.ts'
 
@@ -35,11 +35,11 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
       parts.push(bytes)
     }
     const data = JSON.parse(Buffer.concat(parts).toString('utf8')) as Partial<MediaTicket>
-    const url = facebookUrl(data?.url)
-    if (!url) throw new ExtractionFailure('INVALID_LINK')
+    const link = resolveVideoLink(data?.url)
+    if (!link) throw new ExtractionFailure('INVALID_LINK')
     if (request.url === '/inspect') {
       const start = performance.now()
-      const source = await inspect(url, controller.signal)
+      const source = await inspect(link, controller.signal)
       const extractorMs = Math.round(performance.now() - start)
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
         .end(JSON.stringify({ ...source, extractorMs }))
@@ -50,8 +50,8 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
         (data.resolution !== null && (!positiveInteger(data.resolution?.width) || !positiveInteger(data.resolution?.height)))) {
       throw new ExtractionFailure('NO_FORMAT')
     }
-    const result = await download({ url, selection: data.selection, audioRequired: data.audioRequired,
-      resolution: data.resolution, sizeBytes: null }, controller.signal)
+    const result = await download({ url: link.url, selection: data.selection, audioRequired: data.audioRequired,
+      resolution: data.resolution, sizeBytes: null }, link.platform, controller.signal)
     response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': result.size,
       'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' })
     await pipeline(result.stream, response)

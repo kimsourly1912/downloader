@@ -4,7 +4,9 @@ import { mkdtemp, rm, stat, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { facebookMediaUrl, formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
-import type { ExtractorError, MediaTicket, SourceFormat, SourceVideo } from '../shared/extraction.ts'
+import type { ExtractorError, MediaTicket, SourceFormat, SourceVideo, VideoLink } from '../shared/extraction.ts'
+import { platformNames } from '../shared/types/media.ts'
+import type { VideoPlatform } from '../shared/types/media.ts'
 
 export class ExtractionFailure extends Error {
   readonly code: ExtractorError
@@ -17,6 +19,15 @@ export class ExtractionFailure extends Error {
 
 const commonArgs = ['--ignore-config', '--no-cache-dir', '--no-plugin-dirs', '--no-playlist',
   '--no-js-runtimes', '--compat-options', 'no-certifi', '--socket-timeout', '15', '--retries', '1', '--fragment-retries', '1']
+const thumbnailHosts: Record<VideoPlatform, RegExp> = {
+  facebook: /(^|\.)fbcdn\.net$/,
+  youtube: /(^|\.)ytimg\.com$/,
+  tiktok: /(^|\.)tiktokcdn(?:-us)?\.com$/
+}
+
+function extractorArgs(platform: VideoPlatform) {
+  return platform === 'youtube' ? [...commonArgs, '--js-runtimes', 'node'] : commonArgs
+}
 
 export async function loadCloudflareCa() {
   if (process.env.MEDIA_CLOUDFLARE_EGRESS !== '1') return
@@ -61,7 +72,10 @@ function run(executable: string, args: string[], timeout: number, signal: AbortS
       signal.removeEventListener('abort', abort)
       if (failure) return reject(new ExtractionFailure(failure))
       if (status === 0) return resolve(Buffer.concat(chunks).toString('utf8'))
-      if (/login required|log in|logging in|private video|video is unavailable/i.test(details)) {
+      if (/confirm (?:that )?you(?:'re| are) not a bot/i.test(details.replaceAll('’', "'"))) {
+        return reject(new ExtractionFailure('UPSTREAM_RESTRICTED'))
+      }
+      if (/login required|log in|logging in|sign in|private video|video is unavailable/i.test(details)) {
         return reject(new ExtractionFailure('UNAVAILABLE'))
       }
       if (/requested format is not available|file too large|file size limit/i.test(details)) {
@@ -72,7 +86,7 @@ function run(executable: string, args: string[], timeout: number, signal: AbortS
   })
 }
 
-function metadata(value: string): SourceVideo {
+function metadata(value: string, platform: VideoPlatform): SourceVideo {
   const data = JSON.parse(value) as Record<string, unknown>
   const formats: SourceFormat[] = []
   if (Array.isArray(data.formats)) {
@@ -80,9 +94,9 @@ function metadata(value: string): SourceVideo {
     const hdUrl = rawFormats.find(item => item?.format_id === 'hd')?.url
     for (const item of rawFormats) {
       if (!item || typeof item.format_id !== 'string' || !formatId.test(item.format_id)) continue
-      if (item.format_id === 'sd' && typeof hdUrl === 'string' && hdUrl && item.url === hdUrl) continue
+      if (platform === 'facebook' && item.format_id === 'sd' && typeof hdUrl === 'string' && hdUrl && item.url === hdUrl) continue
       const str = (key: string) => typeof item[key] === 'string' ? (item[key] as string).slice(0, 64) : undefined
-      const mediaUrl = item.protocol === 'https' && !item.manifest_url && !item.fragments &&
+      const mediaUrl = platform === 'facebook' && item.protocol === 'https' && !item.manifest_url && !item.fragments &&
         item.vcodec !== 'none' && item.acodec !== 'none' ? facebookMediaUrl(item.url) : undefined
       formats.push({ id: item.format_id, ext: str('ext'), protocol: str('protocol'), videoCodec: str('vcodec'),
         audioCodec: str('acodec'), width: positiveInteger(item.width) ? item.width : undefined,
@@ -94,26 +108,28 @@ function metadata(value: string): SourceVideo {
   if (typeof data.thumbnail === 'string' && data.thumbnail.length <= 4096) {
     try {
       const url = new URL(data.thumbnail)
-      if (url.protocol === 'https:' && !url.username && !url.password && !url.port && /(^|\.)fbcdn\.net$/.test(url.hostname)) thumbnail = url.href
+      if (url.protocol === 'https:' && !url.username && !url.password && !url.port && thumbnailHosts[platform].test(url.hostname)) thumbnail = url.href
     } catch { /* Some sources have no valid thumbnail. */ }
   }
   const duration = typeof data.duration === 'number' && Number.isFinite(data.duration) && data.duration > 0 ? data.duration : null
-  return { title: typeof data.title === 'string' && data.title.trim() ? data.title.slice(0, 180) : 'Facebook video',
-    duration, thumbnail, live: data.is_live === true || data.live_status === 'is_upcoming', formats }
+  return { title: typeof data.title === 'string' && data.title.trim() ? data.title.slice(0, 180) : `${platformNames[platform]} video`,
+    duration, thumbnail, live: data.is_live === true || data.live_status === 'is_upcoming' || data.live_status === 'post_live', formats }
 }
 
-export async function inspect(url: string, signal: AbortSignal) {
-  const result = await run(process.env.YTDLP_BIN || 'yt-dlp', [...commonArgs, '--dump-single-json', '--skip-download', '--', url], 40_000, signal)
-  return metadata(result)
+export async function inspect(link: VideoLink, signal: AbortSignal) {
+  const result = await run(process.env.YTDLP_BIN || 'yt-dlp',
+    [...extractorArgs(link.platform), '--dump-single-json', '--skip-download', '--', link.url], 40_000, signal)
+  return metadata(result, link.platform)
 }
 
-export async function download(ticket: MediaTicket, signal: AbortSignal) {
+export async function download(ticket: MediaTicket, platform: VideoPlatform, signal: AbortSignal) {
   const folder = await mkdtemp(join(tmpdir(), 'downloader-'))
   const cleanup = () => rm(folder, { recursive: true, force: true })
   try {
     const template = join(folder.replaceAll('%', '%%'), 'video.%(ext)s')
-    const selection = ticket.selection.split('+').map(id => `all[format_id=${id}]`).join('+')
-    await run(process.env.YTDLP_BIN || 'yt-dlp', [...commonArgs, '--downloader', 'native', '--fixup', 'never',
+    // yt-dlp reads unquoted numeric format IDs as numbers instead of strings.
+    const selection = ticket.selection.split('+').map(id => `all[format_id="${id}"]`).join('+')
+    await run(process.env.YTDLP_BIN || 'yt-dlp', [...extractorArgs(platform), '--downloader', 'native', '--fixup', 'never',
       '--max-filesize', String(maxMediaBytes), '--match-filters', `duration <=? ${maxVideoSeconds} & !is_live`,
       '--format', selection, '--merge-output-format', 'mp4', '--output', template, '--', ticket.url], 140_000, signal, true)
     const path = join(folder, 'video.mp4')

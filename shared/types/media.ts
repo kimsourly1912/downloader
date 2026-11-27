@@ -5,6 +5,9 @@ export interface Resolution {
 
 export type SourceQuality = 'hd' | 'sd'
 
+export const platformNames = { facebook: 'Facebook', youtube: 'YouTube', tiktok: 'TikTok' } as const
+export type VideoPlatform = keyof typeof platformNames
+
 export interface DownloadQuality {
   id: string
   resolution: Resolution | null
@@ -13,6 +16,7 @@ export interface DownloadQuality {
 }
 
 export interface InspectedVideo {
+  platform: VideoPlatform
   title: string
   durationSeconds: number | null
   thumbnail: string | null

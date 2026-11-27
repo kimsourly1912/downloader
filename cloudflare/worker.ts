@@ -1,7 +1,7 @@
 import { Container } from '@cloudflare/containers'
-import { extractionHosts, facebookMediaExpiry, facebookMediaUrl, facebookUrl } from '../shared/extraction.ts'
+import { extractionHosts, facebookMediaExpiry, facebookMediaUrl, invalidLinkMessage, resolveVideoLink } from '../shared/extraction.ts'
 import type { InspectionResult, InspectionTiming, MediaTicket, SourceVideo } from '../shared/extraction.ts'
-import { chooseFormats } from '../shared/facebook-formats.ts'
+import { chooseFormats } from '../shared/video-formats.ts'
 // @ts-expect-error Nitro emits this Worker module during the Nuxt build.
 import nitro from '../.output/server/index.mjs'
 
@@ -50,7 +50,7 @@ export class DownloaderContainer extends Container<Env> {
   }
 
   private async inspectCached(input: unknown): Promise<InspectionResult> {
-    const url = facebookUrl(input)
+    const url = resolveVideoLink(input)?.url
     const timing: InspectionTiming = { cache: 'miss' }
     if (!url) return { failure: 'INVALID_LINK', timing }
 
@@ -182,7 +182,7 @@ export default {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       if (request.method !== 'POST' || pathname !== '/api/videos/inspect') return new Response(null, { status: 405 })
       const body = await boundedBody(request).catch(() => null)
-      if (!body) return Response.json({ statusMessage: 'Paste a Facebook video or Reel link.', data: { code: 'INVALID_LINK' } },
+      if (!body) return Response.json({ statusMessage: invalidLinkMessage, data: { code: 'INVALID_LINK' } },
         { status: 400, headers: { 'Cache-Control': 'no-store' } })
       const headers = new Headers(request.headers)
       headers.delete('Content-Length')
