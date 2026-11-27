@@ -24,9 +24,7 @@ export default defineConfig({
     },
     env: {
       DOWNLOADER: bindings.durableObject({ worker: workerName, exportName: 'DownloaderContainer' }),
-      ASSETS: bindings.assets(),
-      BETA_ACCESS_AUD: bindings.text(process.env.DOWNLOADER_ACCESS_AUD?.trim() ?? ''),
-      BETA_ACCESS_TEAM: bindings.text(process.env.DOWNLOADER_ACCESS_TEAM?.trim() ?? '')
+      ASSETS: bindings.assets()
     }
   }
 })

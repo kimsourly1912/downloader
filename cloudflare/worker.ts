@@ -1,5 +1,4 @@
 import { Container } from '@cloudflare/containers'
-import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { extractionHosts } from '../shared/extraction.ts'
 import type { MediaTicket } from '../shared/extraction.ts'
 // @ts-expect-error Nitro emits this Worker module during the Nuxt build.
@@ -9,8 +8,6 @@ export { ContainerProxy } from '@cloudflare/containers'
 
 interface Env {
   DOWNLOADER: DurableObjectNamespace<DownloaderContainer>
-  BETA_ACCESS_AUD: string
-  BETA_ACCESS_TEAM: string
   ASSETS: Fetcher
 }
 
@@ -71,25 +68,6 @@ export class DownloaderContainer extends Container<Env> {
   }
 }
 
-let signingKeys: { issuer: string, keys: ReturnType<typeof createRemoteJWKSet> } | undefined
-
-async function authenticated(request: Request, env: Env, ctx: ExecutionContext) {
-  const audience = ctx.access?.aud
-  if (Array.isArray(audience) ? audience.includes(env.BETA_ACCESS_AUD) : audience === env.BETA_ACCESS_AUD) return true
-  // The Static Assets router can remove ctx.access. Validate the signed assertion in that case.
-  const hostname = env.BETA_ACCESS_TEAM
-  const token = request.headers.get('Cf-Access-Jwt-Assertion')
-  if (!/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(hostname) || !token) return false
-  const issuer = `https://${hostname}`
-  if (signingKeys?.issuer !== issuer) signingKeys = { issuer, keys: createRemoteJWKSet(new URL('/cdn-cgi/access/certs', issuer)) }
-  try {
-    await jwtVerify(token, signingKeys.keys, { issuer, audience: env.BETA_ACCESS_AUD, algorithms: ['RS256'], requiredClaims: ['exp'] })
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function boundedBody(request: Request) {
   if (Number(request.headers.get('Content-Length')) > 4096 || !request.body) return null
   const reader = request.body.getReader()
@@ -113,22 +91,16 @@ async function boundedBody(request: Request) {
 
 export default {
   async fetch(request, env, ctx) {
-    if (!env.BETA_ACCESS_AUD) return new Response('Beta access is not configured.', { status: 503, headers: { 'Cache-Control': 'no-store' } })
-    if (!await authenticated(request, env, ctx)) return new Response('This beta requires Cloudflare Access.', { status: 403, headers: { 'Cache-Control': 'no-store' } })
-
-    const headers = new Headers(request.headers)
-    for (const name of [...headers.keys()]) {
-      if (name === 'cookie' || name === 'authorization' || name.startsWith('cf-access-')) headers.delete(name)
-    }
     const pathname = new URL(request.url).pathname
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       if (request.method !== 'POST' || pathname !== '/api/videos/inspect') return new Response(null, { status: 405 })
       const body = await boundedBody(request).catch(() => null)
       if (!body) return Response.json({ statusMessage: 'Paste a Facebook video or Reel link.', data: { code: 'INVALID_LINK' } },
         { status: 400, headers: { 'Cache-Control': 'no-store' } })
+      const headers = new Headers(request.headers)
       headers.delete('Content-Length')
       return nitro.fetch(new Request(request.url, { method: request.method, headers, body, signal: request.signal }), env, ctx)
     }
-    return nitro.fetch(new Request(request, { headers }), env, ctx)
+    return nitro.fetch(request, env, ctx)
   }
 } satisfies ExportedHandler<Env>

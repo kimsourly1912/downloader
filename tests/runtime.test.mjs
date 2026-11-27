@@ -7,11 +7,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { build } from 'esbuild'
-import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { convertV4MiniflareOptions, Miniflare } from 'miniflare'
-
-const issuer = 'https://beta-fixture.cloudflareaccess.com'
-const audience = 'test-app-audience'
 
 async function setup(t, live) {
   const temp = await mkdtemp(join(tmpdir(), 'downloader-runtime-'))
@@ -47,10 +43,6 @@ async function setup(t, live) {
     await new Promise(ready => setTimeout(ready, 100))
   }
 
-  const { privateKey, publicKey } = await generateKeyPair('RS256')
-  const publicJwk = { ...await exportJWK(publicKey), kid: 'fixture', alg: 'RS256' }
-  const signed = target => new SignJWT({}).setProtectedHeader({ alg: 'RS256', kid: 'fixture' })
-    .setIssuer(issuer).setAudience(target).setExpirationTime('5m').sign(privateKey)
   const bundle = await build({ entryPoints: ['cloudflare/worker.ts'], bundle: true, write: false, format: 'esm',
     platform: 'neutral', external: ['cloudflare:*', 'node:*'], logLevel: 'silent', plugins: [{ name: 'container-binding',
       setup(plugin) {
@@ -64,10 +56,7 @@ async function setup(t, live) {
     }] })
   const runtime = new Miniflare(convertV4MiniflareOptions({ modules: true, script: bundle.outputFiles[0].text,
     compatibilityDate: '2026-11-23', compatibilityFlags: ['nodejs_compat'],
-    bindings: { BETA_ACCESS_AUD: audience, BETA_ACCESS_TEAM: new URL(issuer).hostname },
     durableObjects: { DOWNLOADER: { className: 'DownloaderContainer', useSQLite: true } },
-    outboundService: request => request.url === `${issuer}/cdn-cgi/access/certs`
-      ? Response.json({ keys: [publicJwk] }) : new Response('Unexpected outbound fetch', { status: 502 }),
     serviceBindings: {
       EXTRACTOR: request => fetch(new URL(new URL(request.url).pathname, origin), {
         method: request.method, headers: request.headers, body: request.body, duplex: 'half'
@@ -76,22 +65,21 @@ async function setup(t, live) {
     }
   }))
   t.after(() => runtime.dispose())
-  const token = await signed(audience)
-  const request = (path, options = {}, credential = token) => runtime.dispatchFetch(`https://downloader.test${path}`, {
-    ...options, headers: { Accept: 'application/json', ...(credential ? { 'Cf-Access-Jwt-Assertion': credential } : {}), ...options.headers }
+  const request = (path, options = {}) => runtime.dispatchFetch(`https://downloader.test${path}`, {
+    ...options, headers: { Accept: 'application/json', ...options.headers }
   })
-  return { request, signed, temp }
+  return { request, temp }
 }
 
 function inspect(request, url) {
   return request('/api/videos/inspect', { method: 'POST', body: JSON.stringify({ url }), headers: { 'Content-Type': 'application/json' } })
 }
 
-test('built Worker checks Access, uses Nitro and streams valid files from its container binding', { timeout: 45_000 }, async t => {
-  const { request, signed, temp } = await setup(t, false)
-  assert.equal((await request('/', {}, null)).status, 403)
-  assert.equal((await request('/', {}, await signed('wrong-audience'))).status, 403)
-  assert.match(await (await request('/')).text(), /Save a Facebook video/)
+test('public Worker serves the app and streams valid files from its container binding', { timeout: 45_000 }, async t => {
+  const { request, temp } = await setup(t, false)
+  const homepage = await request('/')
+  assert.equal(homepage.status, 200)
+  assert.match(await homepage.text(), /Save a Facebook video/)
   const css = (await readdir('.output/public/_nuxt')).find(name => name.endsWith('.css'))
   assert.equal((await request(`/_nuxt/${css}`)).status, 200)
   assert.equal((await inspect(request, 'x'.repeat(4100))).status, 400)
