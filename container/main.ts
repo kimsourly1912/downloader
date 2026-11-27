@@ -40,8 +40,9 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
     if (request.url === '/inspect') {
       const start = performance.now()
       const source = await inspect(url, controller.signal)
-      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
-        'X-Extractor-Ms': String(Math.round(performance.now() - start)) }).end(JSON.stringify(source))
+      const extractorMs = Math.round(performance.now() - start)
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+        .end(JSON.stringify({ ...source, extractorMs }))
       return
     }
 

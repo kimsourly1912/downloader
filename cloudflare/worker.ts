@@ -85,7 +85,9 @@ export class DownloaderContainer extends Container<Env> {
         await result.body?.cancel()
         return { failure: result.headers.get('X-Downloader-Error'), timing }
       }
-      const source = await result.json<SourceVideo>()
+      const source = await result.json<SourceVideo & { extractorMs?: number }>()
+      if (typeof source.extractorMs === 'number' && Number.isInteger(source.extractorMs) &&
+          source.extractorMs >= 0 && source.extractorMs <= 60_000) timing.extractorMs = source.extractorMs
       const choices = chooseFormats(source)
       if (typeof choices === 'string') return { failure: choices, timing }
       const video = { title: source.title, duration: source.duration, thumbnail: source.thumbnail, choices }
