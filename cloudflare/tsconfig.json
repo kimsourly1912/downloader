@@ -11,5 +11,5 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["*.ts", "../cloudflare.config.ts", "../vite.config.ts", "../container/*.ts", "../shared/**/*.ts"]
+  "include": ["**/*.ts", "../cloudflare.config.ts", "../vite.config.ts", "../container/*.ts", "../shared/**/*.ts"]
 }
