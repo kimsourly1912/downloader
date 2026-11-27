@@ -15,7 +15,8 @@ export default defineConfig({
     entrypoint: './cloudflare/worker.ts',
     compatibilityDate: '2026-11-23',
     compatibilityFlags: ['nodejs_compat'],
-    workersDev: true,
+    domains: ['downloader.angder.app'],
+    workersDev: false,
     previewUrls: false,
     assets: { runWorkerFirst: true },
     exports: {
