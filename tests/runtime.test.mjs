@@ -96,6 +96,28 @@ test('public Worker serves the app and streams valid files from its container bi
     assert.deepEqual(Buffer.from(await returned.arrayBuffer()), await readFile(join(temp, `${quality.resolution.height}.mp4`)))
   }
   assert.equal((await request('/api/downloads/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa')).status, 410)
+
+  const direct = await inspect(request, 'https://www.facebook.com/share/r/SourceQuality/')
+  assert.equal(direct.status, 200)
+  const { qualities } = await direct.json()
+  assert.deepEqual(qualities.map(quality => quality.sourceQuality), ['hd', 'sd'])
+  assert.ok(qualities.every(quality => quality.resolution === null))
+
+  const filenames = new Set()
+  for (const quality of [qualities[0], qualities[1], qualities[0]]) {
+    const file = await request(`/api/downloads/${quality.id}`)
+    assert.equal(file.status, 200)
+    const filename = file.headers.get('Content-Disposition')
+    assert.match(filename, /^attachment; filename="facebook-video-[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\.mp4"$/)
+    filenames.add(filename)
+    const height = quality.sourceQuality === 'hd' ? 360 : 180
+    assert.deepEqual(Buffer.from(await file.arrayBuffer()), await readFile(join(temp, `${height}.mp4`)))
+  }
+  assert.equal(filenames.size, 3)
+
+  const duplicate = await inspect(request, 'https://www.facebook.com/share/r/SourceQualityDuplicate/')
+  assert.equal(duplicate.status, 200)
+  assert.deepEqual((await duplicate.json()).qualities.map(quality => quality.sourceQuality), ['hd'])
 })
 
 test('real authorized Facebook link through the production Worker and extractor adapter', {

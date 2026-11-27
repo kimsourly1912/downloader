@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { facebookVideoFilename } from '#shared/extraction'
 import type { DownloadQuality, InspectedVideo } from '#shared/types/media'
 
 const link = ref('')
@@ -69,7 +70,8 @@ async function inspect() {
 
 function qualityLabel(quality: DownloadQuality) {
   const size = quality.resolution
-  return size ? `${Math.min(size.width, size.height)}p` : 'Source quality'
+  if (size) return `${Math.min(size.width, size.height)}p`
+  return quality.sourceQuality?.toUpperCase() ?? 'Source quality'
 }
 
 function qualityDetails(quality: DownloadQuality) {
@@ -102,7 +104,7 @@ async function download(quality: DownloadQuality) {
     const url = URL.createObjectURL(file)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] || 'facebook-video.mp4'
+    anchor.download = response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1] || facebookVideoFilename()
     document.body.append(anchor)
     anchor.click()
     anchor.remove()

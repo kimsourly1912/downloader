@@ -53,3 +53,10 @@ jobs:
           curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 6 --max-time 15 \
             https://downloader.angder.app/ --output "$RUNNER_TEMP/downloader-home.html"
           grep -q 'Save a Facebook video' "$RUNNER_TEMP/downloader-home.html"
+      - name: Verify the public inspection API
+        run: |
+          status=$(curl --silent --show-error --max-time 15 --write-out '%{http_code}' \
+            --output "$RUNNER_TEMP/downloader-invalid-link.json" --header 'Content-Type: application/json' \
+            --data '{"url":"https://example.com/video"}' https://downloader.angder.app/api/videos/inspect)
+          test "$status" = 400
+          node -e 'if (require(process.argv[1]).data?.code !== "INVALID_LINK") process.exit(1)' "$RUNNER_TEMP/downloader-invalid-link.json"
