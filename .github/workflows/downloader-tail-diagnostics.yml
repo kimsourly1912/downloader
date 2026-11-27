@@ -35,11 +35,12 @@ jobs:
           const versions=await query(path+'/versions')
           console.log('Version count',Array.isArray(versions)?versions.length:versions.http??Object.keys(versions))
           console.log('Application image',app.configuration?.image?.split('@').at(-1))
-          for(let step=0;step<9;step++){
+          for(let step=0;step<4;step++){
             const result=await query(path+'/instances-v2')
             const placements=Array.isArray(result)?result:result.instances??result.placements??[]
+            const states=placements.map(item=>item.status && ({state:item.status.state,since:item.status.updated_at}))
             const raw=placements.map(item=>Object.fromEntries(Object.entries(item).filter(([k,v])=>/status|version|created|updated|image/i.test(k)&&typeof v==='string').map(([k,v])=>[k,v.includes('@')?v.split('@').at(-1):v])))
-            console.log(new Date().toISOString(),JSON.stringify({count:placements.length,raw,keys:Object.keys(result).slice(0,12),http:result.http}))
-            if(step<8)await delay(20_000)
+            console.log(new Date().toISOString(),JSON.stringify({count:placements.length,states,raw,keys:Object.keys(result).slice(0,12),http:result.http}))
+            if(step<3)await delay(30_000)
           }
           EOF
