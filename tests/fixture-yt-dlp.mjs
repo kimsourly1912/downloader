@@ -4,6 +4,10 @@ import { copyFile } from 'node:fs/promises'
 const args = process.argv.slice(2)
 const source = new URL(args.at(-1))
 const youtube = source.hostname === 'www.youtube.com'
+if (source.pathname === '/@test/video/429') {
+  console.error('ERROR: [tiktok] Unable to download webpage: HTTP Error 429: Too Many Requests https://www.tiktok.com/?secret=private')
+  process.exit(1)
+}
 if (youtube && args[args.indexOf('--js-runtimes') + 1] !== 'node') process.exit(2)
 if (source.href.endsWith('/reel/404/')) {
   console.error('ERROR: Login required')

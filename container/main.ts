@@ -25,6 +25,7 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
   const controller = new AbortController()
   response.once('close', () => controller.abort())
   const deadline = setTimeout(() => { controller.abort(); response.destroy() }, 180_000)
+  let inspectionStart: number | undefined
   try {
     const parts: Buffer[] = []
     let length = 0
@@ -38,9 +39,9 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
     const link = resolveVideoLink(data?.url)
     if (!link) throw new ExtractionFailure('INVALID_LINK')
     if (request.url === '/inspect') {
-      const start = performance.now()
+      inspectionStart = performance.now()
       const source = await inspect(link, controller.signal)
-      const extractorMs = Math.round(performance.now() - start)
+      const extractorMs = Math.round(performance.now() - inspectionStart)
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
         .end(JSON.stringify({ ...source, extractorMs }))
       return
@@ -58,6 +59,10 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
   } catch (error) {
     if (!response.headersSent && !response.destroyed) {
       const code = error instanceof ExtractionFailure ? error.code : error instanceof SyntaxError ? 'INVALID_LINK' : 'UPSTREAM_ERROR'
+      if (inspectionStart !== undefined) {
+        response.setHeader('X-Extractor-Ms', Math.round(performance.now() - inspectionStart))
+        if (error instanceof ExtractionFailure && error.diagnostic) response.setHeader('X-Extractor-Diagnostic', error.diagnostic)
+      }
       response.writeHead(422, { 'X-Downloader-Error': code, 'Cache-Control': 'no-store' }).end()
     } else if (!response.destroyed) response.destroy()
   } finally {

@@ -1,5 +1,5 @@
 import { Container } from '@cloudflare/containers'
-import { extractionHosts, facebookMediaExpiry, facebookMediaUrl, invalidLinkMessage, resolveVideoLink } from '../shared/extraction.ts'
+import { extractionHosts, extractorDiagnostic, facebookMediaExpiry, facebookMediaUrl, invalidLinkMessage, resolveVideoLink } from '../shared/extraction.ts'
 import type { InspectionResult, InspectionTiming, MediaTicket, SourceVideo } from '../shared/extraction.ts'
 import { chooseFormats } from '../shared/video-formats.ts'
 // @ts-expect-error Nitro emits this Worker module during the Nuxt build.
@@ -82,6 +82,8 @@ export class DownloaderContainer extends Container<Env> {
       const measured = result.headers.get('X-Extractor-Ms')
       if (measured && /^\d{1,6}$/.test(measured)) timing.extractorMs = Number(measured)
       if (!result.ok) {
+        const diagnostic = result.headers.get('X-Extractor-Diagnostic')
+        if (diagnostic && extractorDiagnostic.test(diagnostic)) timing.diagnostic = diagnostic
         await result.body?.cancel()
         return { failure: result.headers.get('X-Downloader-Error'), timing }
       }
