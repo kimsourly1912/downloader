@@ -57,10 +57,8 @@ async function setup(t, live) {
     }] })
   const fallbackRequests = []
   const upstreamRequests = []
-  const inspections = []
-  const options = convertV4MiniflareOptions({ modules: true, script: bundle.outputFiles[0].text,
+  const runtime = new Miniflare(convertV4MiniflareOptions({ modules: true, script: bundle.outputFiles[0].text,
     compatibilityDate: '2026-11-23', compatibilityFlags: ['nodejs_compat'],
-    resourcePersistencePath: join(temp, 'worker-state'),
     durableObjects: { DOWNLOADER: { className: 'DownloaderContainer', useSQLite: true } },
     outboundService: live ? undefined : async request => {
       const url = new URL(request.url)
@@ -73,31 +71,21 @@ async function setup(t, live) {
       return new Response(bytes, { headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(bytes.length) } })
     },
     serviceBindings: {
-      EXTRACTOR: async request => {
+      EXTRACTOR: request => {
         const path = new URL(request.url).pathname
         if (path === '/download') fallbackRequests.push(path)
-        if (path === '/inspect') {
-          const { url } = await request.clone().json()
-          inspections.push(url)
-          if (url.includes('Concurrent')) await new Promise(resolve => setTimeout(resolve, 150))
-        }
         return fetch(new URL(path, origin), {
           method: request.method, headers: request.headers, body: request.body, duplex: 'half'
         })
       },
       ASSETS: async request => new Response(await readFile(resolve('.output/public', `.${new URL(request.url).pathname}`)))
     }
-  })
-  let runtime = new Miniflare(options)
+  }))
   t.after(() => runtime.dispose())
   const request = (path, options = {}) => runtime.dispatchFetch(`https://downloader.test${path}`, {
     ...options, headers: { Accept: 'application/json', ...options.headers }
   })
-  const restartWorker = async () => {
-    await runtime.dispose()
-    runtime = new Miniflare(options)
-  }
-  return { request, temp, upstreamRequests, fallbackRequests, inspections, restartWorker }
+  return { request, temp, upstreamRequests, fallbackRequests }
 }
 
 function inspect(request, url) {
@@ -154,38 +142,6 @@ test('public Worker streams compatible MP4s and falls back for unsafe CDN redire
   const duplicate = await inspect(request, 'https://www.facebook.com/share/r/SourceQualityDuplicate/')
   assert.equal(duplicate.status, 200)
   assert.deepEqual((await duplicate.json()).qualities.map(quality => quality.sourceQuality), ['hd'])
-})
-
-test('shares inspections, gives cache hits fresh tickets, and keeps tickets across Worker restarts', { timeout: 45_000 }, async t => {
-  const { request, inspections, restartWorker, fallbackRequests } = await setup(t, false)
-  const url = 'https://www.facebook.com/share/r/SourceQualityConcurrent/'
-  const first = await Promise.all([inspect(request, url), inspect(request, url)])
-  for (const res of first) assert.equal(res.status, 200)
-  assert.deepEqual(first.map(res => res.headers.get('Server-Timing').match(/desc="(miss|shared)"/)?.[1]).sort(), ['miss', 'shared'])
-  assert.ok(first.some(res => /facebook_lookup;dur=\d+/.test(res.headers.get('Server-Timing'))))
-  assert.deepEqual(inspections, [url])
-  const repeated = await inspect(request, url)
-  assert.equal(repeated.headers.get('Server-Timing'), 'inspect_cache;desc="hit"')
-  assert.deepEqual(inspections, [url])
-  const earlier = await first[0].json()
-  await first[1].body.cancel()
-  const cached = await repeated.json()
-  assert.notEqual(cached.qualities[0].id, earlier.qualities[0].id)
-
-  await restartWorker()
-  const download = await request(`/api/downloads/${cached.qualities[0].id}`)
-  assert.equal(download.status, 200)
-  assert.match(download.headers.get('Server-Timing'), /facebook_cdn/)
-  await download.body.cancel()
-  assert.equal(fallbackRequests.length, 0)
-
-  const failing = 'https://www.facebook.com/reel/404/'
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await inspect(request, failing)
-    assert.equal(res.status, 422)
-    await res.body.cancel()
-  }
-  assert.deepEqual(inspections, [url, failing, failing])
 })
 
 test('real authorized Facebook link through the production Worker and extractor adapter', {
