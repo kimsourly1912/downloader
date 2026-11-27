@@ -1,4 +1,4 @@
-import { ProbeFailure, inspectFacebook, verifyMp4 } from './facebook.ts'
+import { ProbeFailure, inspectFacebook, mediaUrl, verifyMp4 } from './facebook.ts'
 
 interface Env {
   PROBE_TOKEN_SHA256: string
@@ -8,7 +8,8 @@ export default {
   async fetch(request, env) {
     const headers = { 'Cache-Control': 'no-store' }
     const token = request.headers.get('Authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1]
-    if (!token || request.method !== 'POST' || new URL(request.url).pathname !== '/probe') {
+    const route = new URL(request.url).pathname
+    if (!token || request.method !== 'POST' || (route !== '/probe' && route !== '/media')) {
       return new Response(null, { status: 404, headers })
     }
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
@@ -20,6 +21,12 @@ export default {
     const colo = request.cf?.colo
     try {
       const body = await request.json<{ url?: unknown }>()
+      if (route === '/media') {
+        const url = mediaUrl(body.url)
+        if (!url) throw new ProbeFailure('INVALID_MEDIA_URL')
+        const result = await verifyMp4(url, AbortSignal.timeout(10_000))
+        return Response.json({ colo, ...result }, { headers })
+      }
       const result = await inspectFacebook(body.url, AbortSignal.timeout(25_000))
       const inspectMs = Date.now() - start
       const qualities = await Promise.all(Object.entries(result.choices).flatMap(([quality, url]) => url
