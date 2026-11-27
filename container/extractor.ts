@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createReadStream } from 'node:fs'
-import { mkdtemp, rm, stat, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { facebookMediaUrl, formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
@@ -46,20 +46,9 @@ const thumbnailHosts: Record<VideoPlatform, RegExp> = {
   tiktok: /(^|\.)tiktokcdn(?:-us)?\.com$/
 }
 
-function extractorArgs(platform: VideoPlatform) {
-  return platform === 'youtube' ? [...commonArgs, '--js-runtimes', 'node'] : commonArgs
-}
-
-export async function loadCloudflareCa() {
-  if (process.env.MEDIA_CLOUDFLARE_EGRESS !== '1') return
-  const [system, platform] = await Promise.all([
-    readFile('/etc/ssl/certs/ca-certificates.crt'),
-    readFile('/etc/cloudflare/certs/cloudflare-containers-ca.crt')
-  ])
-  const bundle = join(await mkdtemp(join(tmpdir(), 'downloader-ca-')), 'ca.pem')
-  await writeFile(bundle, Buffer.concat([system, Buffer.from('\n'), platform]))
-  process.env.SSL_CERT_FILE = bundle
-  process.env.REQUESTS_CA_BUNDLE = bundle
+function extractorArgs(platform: VideoPlatform, proxy: string) {
+  const args = [...commonArgs, '--proxy', proxy]
+  return platform === 'youtube' ? [...args, '--js-runtimes', 'node'] : args
 }
 
 function run(executable: string, args: string[], timeout: number, signal: AbortSignal, limitFile = false) {
@@ -137,20 +126,20 @@ function metadata(value: string, platform: VideoPlatform): SourceVideo {
     duration, thumbnail, live: data.is_live === true || data.live_status === 'is_upcoming' || data.live_status === 'post_live', formats }
 }
 
-export async function inspect(link: VideoLink, signal: AbortSignal) {
+export async function inspect(link: VideoLink, proxy: string, signal: AbortSignal) {
   const result = await run(process.env.YTDLP_BIN || 'yt-dlp',
-    [...extractorArgs(link.platform), '--dump-single-json', '--skip-download', '--', link.url], 40_000, signal)
+    [...extractorArgs(link.platform, proxy), '--dump-single-json', '--skip-download', '--', link.url], 40_000, signal)
   return metadata(result, link.platform)
 }
 
-export async function download(ticket: MediaTicket, platform: VideoPlatform, signal: AbortSignal) {
+export async function download(ticket: MediaTicket, platform: VideoPlatform, proxy: string, signal: AbortSignal) {
   const folder = await mkdtemp(join(tmpdir(), 'downloader-'))
   const cleanup = () => rm(folder, { recursive: true, force: true })
   try {
     const template = join(folder.replaceAll('%', '%%'), 'video.%(ext)s')
     // yt-dlp reads unquoted numeric format IDs as numbers instead of strings.
     const selection = ticket.selection.split('+').map(id => `all[format_id="${id}"]`).join('+')
-    await run(process.env.YTDLP_BIN || 'yt-dlp', [...extractorArgs(platform), '--downloader', 'native', '--fixup', 'never',
+    await run(process.env.YTDLP_BIN || 'yt-dlp', [...extractorArgs(platform, proxy), '--downloader', 'native', '--fixup', 'never',
       '--max-filesize', String(maxMediaBytes), '--match-filters', `duration <=? ${maxVideoSeconds} & !is_live`,
       '--format', selection, '--merge-output-format', 'mp4', '--output', template, '--', ticket.url], 140_000, signal, true)
     const path = join(folder, 'video.mp4')

@@ -1,10 +1,12 @@
 import { Container } from '@cloudflare/containers'
-import { extractionHosts, extractorDiagnostic, facebookMediaExpiry, facebookMediaUrl, invalidLinkMessage, resolveVideoLink } from '../shared/extraction.ts'
+import { extractorDiagnostic, facebookMediaExpiry, facebookMediaUrl, invalidLinkMessage, resolveVideoLink } from '../shared/extraction.ts'
 import type { InspectionResult, InspectionTiming, MediaTicket, SourceVideo } from '../shared/extraction.ts'
 import { chooseFormats } from '../shared/video-formats.ts'
 // @ts-expect-error Nitro emits this Worker module during the Nuxt build.
 import nitro from '../.output/server/index.mjs'
 
+// Instances created before direct egress saved an intercept-all setting. The library still routes their plain HTTP
+// through this entrypoint, so keep the export. HTTPS is not intercepted.
 export { ContainerProxy } from '@cloudflare/containers'
 
 interface Env {
@@ -18,19 +20,9 @@ type ResolvedVideo = Extract<InspectionResult, { video: unknown }>['video']
 export class DownloaderContainer extends Container<Env> {
   defaultPort = 3000
   sleepAfter = this.env.DOWNLOADER_IDLE_MINUTES === '10' ? '10m' : '2m'
-  enableInternet = false
-  interceptHttps = true
-  allowedHosts = extractionHosts
-  envVars = { MEDIA_CLOUDFLARE_EGRESS: '1' }
-
-  static {
-    this.outbound = request => {
-      const url = new URL(request.url)
-      if (url.protocol !== 'https:' || url.port || url.username || url.password) return new Response(null, { status: 403 })
-      // Return redirects to the container so the interceptor checks every destination.
-      return fetch(request, { redirect: 'manual' })
-    }
-  }
+  // The container proxy enforces the platform allowlist. Worker egress would replace yt-dlp's TLS client and
+  // source address, which YouTube and TikTok reject.
+  enableInternet = true
 
   private readonly inspections = new Map<string, { video: ResolvedVideo, expiresAt: number }>()
   private readonly pending = new Map<string, Promise<InspectionResult>>()

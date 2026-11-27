@@ -31,8 +31,7 @@ async function setup(t, live) {
   await new Promise(resolveClose => socket.close(resolveClose))
   const origin = `http://127.0.0.1:${port}`
   const adapter = spawn(process.execPath, ['container/main.ts'], {
-    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), TMPDIR: temp, YTDLP_BIN: ytdlp,
-      MEDIA_CLOUDFLARE_EGRESS: '', DOWNLOADER_TEST_FIXTURE: temp }, stdio: ['ignore', 'ignore', 'inherit']
+    env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), TMPDIR: temp, YTDLP_BIN: ytdlp, DOWNLOADER_TEST_FIXTURE: temp }, stdio: ['ignore', 'ignore', 'inherit']
   })
   t.after(async () => {
     if (adapter.exitCode === null) { adapter.kill(); await once(adapter, 'exit') }
