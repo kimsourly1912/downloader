@@ -209,8 +209,17 @@ test('YouTube and TikTok use format selections, normalized links and platform fi
     assert.match(download.headers.get('Content-Disposition'), new RegExp(`^attachment; filename="${platform}-video-[a-f0-9-]{36}\\.mp4"$`))
     assert.deepEqual(Buffer.from(await download.arrayBuffer()), await readFile(join(temp, '360.mp4')))
     // The download reuses the saved inspection instead of extracting the page again.
-    assert.deepEqual((await extractorCalls()).slice(-2), [`inspect ${normalized}`, `download-info ${normalized}`])
+    const inspection = platform === 'youtube' ? 'inspect-visionos' : 'inspect'
+    assert.deepEqual((await extractorCalls()).slice(-2), [`${inspection} ${normalized}`, `download-info ${normalized}`])
   }
+
+  // A visionOS response without a usable MP4 is inspected again with yt-dlp's default clients.
+  const fallback = await inspect(request, 'https://www.youtube.com/watch?v=cdefghijklm')
+  assert.equal(fallback.status, 200)
+  assert.match(fallback.headers.get('Server-Timing'), /platform_lookup;dur=\d+;desc="client-fallback"/)
+  assert.deepEqual((await fallback.json()).qualities.map(quality => quality.resolution?.height), [360, 180])
+  assert.deepEqual((await extractorCalls()).slice(-2), ['inspect-visionos https://www.youtube.com/watch?v=cdefghijklm',
+    'inspect https://www.youtube.com/watch?v=cdefghijklm'])
 
   // A key the container no longer holds falls back to a fresh extraction. Malformed keys are rejected.
   const ticket = { url: 'https://www.youtube.com/watch?v=abcdefghijk', selection: '134+140', audioRequired: true, resolution: null }

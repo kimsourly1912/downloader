@@ -1,6 +1,6 @@
 # Downloader
 
-A mobile-first Nuxt app that checks public Facebook videos and Reels, YouTube videos and Shorts, and TikTok videos. It shows the compatible MP4 qualities available from the source, up to five minutes and 64 MiB per file. Nitro runs on Cloudflare Workers. A small TypeScript container adapter runs yt-dlp and the native media tools.
+A mobile-first Nuxt app that checks public Facebook videos and Reels, YouTube videos and Shorts, and TikTok videos. It shows the compatible MP4 qualities available from the source, up to two hours and 512 MiB per file. Nitro runs on Cloudflare Workers. A small TypeScript container adapter runs yt-dlp and the native media tools.
 
 ## Check the project
 

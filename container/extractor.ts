@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { facebookMediaUrl, formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
 import type { ExtractorError, MediaTicket, SourceFormat, SourceVideo, VideoLink } from '../shared/extraction.ts'
 import { platformNames } from '../shared/types/media.ts'
+import { chooseFormats } from '../shared/video-formats.ts'
 import type { VideoPlatform } from '../shared/types/media.ts'
 
 export class ExtractionFailure extends Error {
@@ -163,11 +164,32 @@ function metadata(value: string, platform: VideoPlatform): SourceVideo {
     duration, thumbnail, live: data.is_live === true || data.live_status === 'is_upcoming' || data.live_status === 'post_live', formats }
 }
 
-export async function inspect(link: VideoLink, runtime: ExtractorRuntime, signal: AbortSignal): Promise<SourceVideo> {
-  const result = await run(process.env.YTDLP_BIN || 'yt-dlp',
-    [...extractorArgs(link.platform, runtime), '--dump-single-json', '--skip-download', '--', link.url], 40_000, signal)
-  const source = metadata(result, link.platform)
-  return { ...source, infoKey: saveInfo(link.url, result) }
+// The visionOS client needs no player script and no Node challenge solver, which are most of YouTube's CPU time.
+// yt-dlp already adds other clients for "made for kids" videos. When this client gives no usable MP4, the
+// inspection runs again with yt-dlp's default clients, so a video is never offered less than before.
+const fastYoutubeArgs = ['--extractor-args', 'youtube:player_client=visionos']
+
+async function extract(link: VideoLink, runtime: ExtractorRuntime, signal: AbortSignal, extraArgs: string[], timeout: number) {
+  const json = await run(process.env.YTDLP_BIN || 'yt-dlp', [...extractorArgs(link.platform, runtime), ...extraArgs,
+    '--dump-single-json', '--skip-download', '--', link.url], timeout, signal)
+  return { json, source: metadata(json, link.platform) }
+}
+
+export async function inspect(link: VideoLink, runtime: ExtractorRuntime, signal: AbortSignal) {
+  let result: Awaited<ReturnType<typeof extract>> | undefined
+  let clientFallback = false
+  if (link.platform === 'youtube') {
+    // Both attempts together stay below the Durable Object's 60-second lookup deadline.
+    result = await extract(link, runtime, signal, fastYoutubeArgs, 15_000).catch(() => undefined)
+    signal.throwIfAborted()
+    if (!result || chooseFormats(result.source) === 'NO_FORMAT') {
+      result = undefined
+      clientFallback = true
+    }
+  }
+  result ??= await extract(link, runtime, signal, [], 40_000)
+  const source: SourceVideo = { ...result.source, infoKey: saveInfo(link.url, result.json) }
+  return { source, clientFallback }
 }
 
 export async function download(ticket: MediaTicket, platform: VideoPlatform, runtime: ExtractorRuntime, signal: AbortSignal) {
@@ -186,7 +208,7 @@ export async function download(ticket: MediaTicket, platform: VideoPlatform, run
     }
     await run(process.env.YTDLP_BIN || 'yt-dlp', [...extractorArgs(platform, runtime), '--downloader', 'native', '--fixup', 'never',
       '--max-filesize', String(maxMediaBytes), '--match-filters', `duration <=? ${maxVideoSeconds} & !is_live`,
-      '--format', selection, '--merge-output-format', 'mp4', '--output', template, ...source], 140_000, signal, true)
+      '--format', selection, '--merge-output-format', 'mp4', '--output', template, ...source], 10 * 60_000, signal, true)
     const path = join(folder, 'video.mp4')
     const file = await stat(path).catch(() => null)
     if (!file?.isFile() || file.size <= 0 || file.size > maxMediaBytes) throw new ExtractionFailure('NO_FORMAT')

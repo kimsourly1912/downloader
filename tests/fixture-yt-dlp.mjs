@@ -11,7 +11,8 @@ const youtube = source.hostname === 'www.youtube.com'
 if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(args[args.indexOf('--proxy') + 1] ?? '')) process.exit(3)
 // Reusing the cache dir keeps YouTube player data between runs.
 if (args.includes('--no-cache-dir') || !args[args.indexOf('--cache-dir') + 1]) process.exit(4)
-const mode = args.includes('--dump-single-json') ? 'inspect' : info ? 'download-info' : 'download-url'
+const visionos = args.includes('youtube:player_client=visionos')
+const mode = args.includes('--dump-single-json') ? `inspect${visionos ? '-visionos' : ''}` : info ? 'download-info' : 'download-url'
 await appendFile(join(process.env.DOWNLOADER_TEST_FIXTURE, 'calls.log'), `${mode} ${source.href}\n`)
 if (source.pathname === '/@test/video/429') {
   console.error('ERROR: [tiktok] Unable to download webpage: HTTP Error 429: Too Many Requests https://www.tiktok.com/?secret=private')
@@ -39,6 +40,10 @@ if (args.includes('--dump-single-json')) {
   if (youtube) {
     formats[1] = { ...formats[1], format_id: '134', acodec: 'none' }
     formats.push({ ...fields, ext: 'm4a', format_id: '140', vcodec: 'none' })
+    // This video's visionOS response has no H.264 MP4, so the adapter must fall back to the default clients.
+    if (visionos && source.searchParams.get('v') === 'cdefghijklm') {
+      formats.splice(0, formats.length, { ...fields, ext: 'webm', vcodec: 'vp9', format_id: '243', width: 640, height: 360 })
+    }
   }
   const thumbnail = youtube ? 'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg'
     : source.hostname.endsWith('.tiktok.com') ? 'https://image.tiktokcdn.com/thumb.jpg' : null

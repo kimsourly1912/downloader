@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import { positiveInteger, resolveVideoLink, validInfoKey, validSelection } from '../shared/extraction.ts'
+import { maxTransferMs, positiveInteger, resolveVideoLink, validInfoKey, validSelection } from '../shared/extraction.ts'
 import type { MediaTicket } from '../shared/extraction.ts'
 import { startEgressProxy } from './egress-proxy.ts'
 import { download, ExtractionFailure, inspect } from './extractor.ts'
@@ -30,7 +30,7 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
   active += 1
   const controller = new AbortController()
   response.once('close', () => controller.abort())
-  const deadline = setTimeout(() => { controller.abort(); response.destroy() }, 180_000)
+  const deadline = setTimeout(() => { controller.abort(); response.destroy() }, maxTransferMs)
   let inspectionStart: number | undefined
   try {
     const parts: Buffer[] = []
@@ -46,10 +46,10 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
     if (!link) throw new ExtractionFailure('INVALID_LINK')
     if (request.url === '/inspect') {
       inspectionStart = performance.now()
-      const source = await inspect(link, runtime, controller.signal)
+      const { source, clientFallback } = await inspect(link, runtime, controller.signal)
       const extractorMs = Math.round(performance.now() - inspectionStart)
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
-        .end(JSON.stringify({ ...source, extractorMs }))
+        .end(JSON.stringify({ ...source, extractorMs, clientFallback }))
       return
     }
 
@@ -62,6 +62,9 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
       resolution: data.resolution, sizeBytes: null, infoKey: data.infoKey }, link.platform, runtime, controller.signal)
     response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': result.size,
       'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' })
+    // Once the file streams, a visitor who stops receiving would otherwise hold one of the two job slots
+    // until the deadline. Preparing the file sends nothing, so this idle limit starts only here.
+    response.setTimeout(60_000, () => { controller.abort(); response.destroy() })
     await pipeline(result.stream, response)
   } catch (error) {
     if (!response.headersSent && !response.destroyed) {

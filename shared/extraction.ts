@@ -1,7 +1,9 @@
 import type { Resolution, SourceQuality, VideoPlatform } from './types/media.ts'
 
-export const maxMediaBytes = 64 * 1024 * 1024
-export const maxVideoSeconds = 300
+export const maxMediaBytes = 512 * 1024 * 1024
+export const maxVideoSeconds = 2 * 60 * 60
+/** Upper bound for one download response, including the time the visitor takes to receive the file. */
+export const maxTransferMs = 30 * 60_000
 export const extractionHosts = [
   'facebook.com', '*.facebook.com', 'fb.watch', 'fbcdn.net', '*.fbcdn.net', 'fbsbx.com', '*.fbsbx.com',
   'youtube.com', '*.youtube.com', 'youtu.be', 'youtubei.googleapis.com', '*.googlevideo.com',
@@ -155,7 +157,7 @@ export interface MediaTicket extends MediaChoice {
 
 export type ExtractorError = 'INVALID_LINK' | 'BUSY' | 'EXPIRED' | 'UNAVAILABLE' | 'NO_FORMAT' | 'TOO_LONG' | 'TOOL_UNAVAILABLE' | 'UPSTREAM_TIMEOUT' | 'UPSTREAM_ERROR' | 'UPSTREAM_RESTRICTED'
 
-export const extractorDiagnostic = /^(?:http-[45]\d{2}|network-timeout|certificate|tls|connection|challenge|unexpected-content|unknown)$/
+export const extractorDiagnostic = /^(?:http-[45]\d{2}|network-timeout|certificate|tls|connection|challenge|unexpected-content|unknown|client-fallback)$/
 
 export interface InspectionTiming {
   cache: 'hit' | 'miss' | 'shared'

@@ -1,4 +1,4 @@
-import { facebookMediaUrl, maxMediaBytes, maxVideoSeconds, positiveInteger } from '#shared/extraction'
+import { facebookMediaUrl, maxMediaBytes, maxTransferMs, maxVideoSeconds, positiveInteger } from '#shared/extraction'
 import type { MediaTicket } from '#shared/extraction'
 
 const metadataLimit = 512 * 1024
@@ -96,7 +96,7 @@ export async function streamFacebookMp4(ticket: MediaTicket, signal: AbortSignal
   const started = performance.now()
   const connection = new AbortController()
   const headerDeadline = setTimeout(() => connection.abort(), 10_000)
-  const upstreamSignal = AbortSignal.any([connection.signal, signal, AbortSignal.timeout(140_000)])
+  const upstreamSignal = AbortSignal.any([connection.signal, signal, AbortSignal.timeout(maxTransferMs)])
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   let streaming = false
   try {
