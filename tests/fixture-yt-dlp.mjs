@@ -45,6 +45,15 @@ if (args.includes('--dump-single-json')) {
       formats.splice(0, formats.length, { ...fields, ext: 'webm', vcodec: 'vp9', format_id: '243', width: 640, height: 360 })
     }
   }
+  // Like a 36-minute YouTube video: 1080p only as HLS with a bitrate (about 1.3 GB), 720p with an exact size.
+  if (youtube && source.searchParams.get('v') === 'efghijklmno') {
+    console.log(JSON.stringify({ title: 'Long clip', duration: 2185, webpage_url: source.href, formats: [
+      { ext: 'm4a', protocol: 'https', vcodec: 'none', acodec: 'mp4a.40.2', format_id: '140', filesize: 35_000_000 },
+      { ext: 'mp4', protocol: 'https', vcodec: 'avc1.4d401f', acodec: 'none', format_id: '136', width: 1280, height: 720, filesize: 257_000_000 },
+      { ext: 'mp4', protocol: 'm3u8_native', vcodec: 'avc1.640028', acodec: 'none', format_id: '270', width: 1920, height: 1080, tbr: 4688 }
+    ] }))
+    process.exit(0)
+  }
   const thumbnail = youtube ? 'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg'
     : source.hostname.endsWith('.tiktok.com') ? 'https://image.tiktokcdn.com/thumb.jpg' : null
   console.log(JSON.stringify({ title: 'Generated clip', duration: 1, formats, thumbnail, webpage_url: source.href }))

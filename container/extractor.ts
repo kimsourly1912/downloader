@@ -130,8 +130,18 @@ function run(executable: string, args: string[], timeout: number, signal: AbortS
   })
 }
 
+// yt-dlp gives HLS formats a bitrate (`tbr`, kbit/s) but no size, so their size is estimated from the duration.
+function estimatedBytes(item: Record<string, unknown>, duration: number | null) {
+  const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
+  const approx = finite(item.filesize_approx)
+  if (approx !== undefined) return Math.round(approx)
+  const tbr = finite(item.tbr)
+  return tbr !== undefined && duration !== null ? Math.round(tbr * 125 * duration) : undefined
+}
+
 function metadata(value: string, platform: VideoPlatform): SourceVideo {
   const data = JSON.parse(value) as Record<string, unknown>
+  const duration = typeof data.duration === 'number' && Number.isFinite(data.duration) && data.duration > 0 ? data.duration : null
   const formats: SourceFormat[] = []
   if (Array.isArray(data.formats)) {
     const rawFormats = data.formats.slice(-128) as Array<Record<string, unknown> | null>
@@ -149,8 +159,7 @@ function metadata(value: string, platform: VideoPlatform): SourceVideo {
         audioCodec: str('acodec'), width: dimensions && positiveInteger(item.width) ? item.width : undefined,
         height: dimensions && positiveInteger(item.height) ? item.height : undefined,
         sizeBytes: positiveInteger(item.filesize) ? item.filesize : undefined,
-        approxBytes: typeof item.filesize_approx === 'number' && item.filesize_approx >= 1 && Number.isFinite(item.filesize_approx)
-          ? Math.round(item.filesize_approx) : undefined, mediaUrl })
+        approxBytes: estimatedBytes(item, duration), mediaUrl })
     }
   }
   let thumbnail: string | null = null
@@ -160,7 +169,6 @@ function metadata(value: string, platform: VideoPlatform): SourceVideo {
       if (url.protocol === 'https:' && !url.username && !url.password && !url.port && thumbnailHosts[platform].test(url.hostname)) thumbnail = url.href
     } catch { /* Some sources have no valid thumbnail. */ }
   }
-  const duration = typeof data.duration === 'number' && Number.isFinite(data.duration) && data.duration > 0 ? data.duration : null
   return { title: typeof data.title === 'string' && data.title.trim() ? data.title.slice(0, 180) : `${platformNames[platform]} video`,
     duration, thumbnail, live: data.is_live === true || data.live_status === 'is_upcoming' || data.live_status === 'post_live', formats }
 }
