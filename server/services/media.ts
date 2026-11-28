@@ -1,4 +1,4 @@
-import { invalidLinkMessage, resolveVideoLink } from '#shared/extraction'
+import { extractorDiagnostic, invalidLinkMessage, resolveVideoLink } from '#shared/extraction'
 import type { ExtractorError, InspectionTiming } from '#shared/extraction'
 import type { InspectedVideo } from '#shared/types/media'
 import type { VideoExtractor } from './video-extractor'
@@ -18,16 +18,21 @@ const messages: Record<ExtractorError, readonly [number, string]> = {
 
 export class MediaFailure extends Error {
   readonly status: number
-  constructor(readonly code: ExtractorError) {
+  /** Short internal reason from `extractorDiagnostic`, safe to expose in `Server-Timing`. */
+  readonly diagnostic?: string
+  /** How long the container worked before failing, when known. */
+  containerMs?: number
+  constructor(readonly code: ExtractorError, diagnostic?: string) {
     const [status, message] = messages[code]
     super(message)
     this.status = status
+    this.diagnostic = diagnostic
   }
 }
 
-export function extractorFailure(value: unknown): MediaFailure {
+export function extractorFailure(value: unknown, diagnostic?: string | null): MediaFailure {
   return new MediaFailure(typeof value === 'string' && Object.hasOwn(messages, value)
-    ? value as ExtractorError : 'UPSTREAM_ERROR')
+    ? value as ExtractorError : 'UPSTREAM_ERROR', diagnostic && extractorDiagnostic.test(diagnostic) ? diagnostic : undefined)
 }
 
 export async function inspectVideo(input: unknown, extractor: VideoExtractor, signal: AbortSignal, onTiming: (timing: InspectionTiming) => void): Promise<InspectedVideo> {

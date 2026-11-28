@@ -12,6 +12,10 @@ export default defineEventHandler(async (event) => {
     headers.set('Content-Disposition', `attachment; filename="${videoFilename(platform)}"`)
     return new Response(download.body, { status: download.status, headers })
   } catch (error) {
+    if (error instanceof MediaFailure && error.diagnostic) {
+      const { containerMs } = error
+      setResponseHeader(event, 'Server-Timing', `container;${containerMs === undefined ? '' : `dur=${containerMs};`}desc="${error.diagnostic}"`)
+    }
     throw mediaHttpError(error)
   }
 })
