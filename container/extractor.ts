@@ -95,27 +95,27 @@ function run(executable: string, args: string[], timeout: number, signal: AbortS
     const chunks: Buffer[] = []
     let length = 0
     let details = ''
-    let failure: ExtractorError | undefined
-    const stop = (code: ExtractorError) => {
-      failure ??= code
+    let failure: ExtractionFailure | undefined
+    const stop = (code: ExtractorError, diagnostic: string) => {
+      failure ??= new ExtractionFailure(code, diagnostic)
       if (child.pid) {
         try { process.kill(-child.pid, 'SIGKILL') } catch { /* Process already stopped. */ }
       }
     }
-    const abort = () => stop('UPSTREAM_ERROR')
+    const abort = () => stop('UPSTREAM_ERROR', 'aborted')
     signal.addEventListener('abort', abort, { once: true })
-    const timer = setTimeout(() => stop('UPSTREAM_TIMEOUT'), timeout)
+    const timer = setTimeout(() => stop('UPSTREAM_TIMEOUT', 'deadline'), timeout)
     child.stdout.on('data', (chunk: Buffer) => {
       length += chunk.length
-      if (length > 2 * 1024 * 1024) stop('UPSTREAM_ERROR')
+      if (length > 2 * 1024 * 1024) stop('UPSTREAM_ERROR', 'output-limit')
       else chunks.push(chunk)
     })
     child.stderr.on('data', (chunk: Buffer) => { details = (details + chunk.toString()).slice(-16_384) })
-    child.once('error', () => { failure ??= 'TOOL_UNAVAILABLE' })
+    child.once('error', () => { failure ??= new ExtractionFailure('TOOL_UNAVAILABLE', 'spawn') })
     child.once('close', (status) => {
       clearTimeout(timer)
       signal.removeEventListener('abort', abort)
-      if (failure) return reject(new ExtractionFailure(failure))
+      if (failure) return reject(failure)
       if (status === 0) return resolve(Buffer.concat(chunks).toString('utf8'))
       if (/confirm (?:that )?you(?:'re| are) not a bot/i.test(details.replaceAll('’', "'"))) {
         return reject(new ExtractionFailure('UPSTREAM_RESTRICTED'))
@@ -123,9 +123,8 @@ function run(executable: string, args: string[], timeout: number, signal: AbortS
       if (/login required|log in|logging in|sign in|private video|video is unavailable/i.test(details)) {
         return reject(new ExtractionFailure('UNAVAILABLE'))
       }
-      if (/requested format is not available|file too large|file size limit/i.test(details)) {
-        return reject(new ExtractionFailure('NO_FORMAT'))
-      }
+      if (/file too large|file size limit/i.test(details)) return reject(new ExtractionFailure('NO_FORMAT', 'file-too-large'))
+      if (/requested format is not available/i.test(details)) return reject(new ExtractionFailure('NO_FORMAT', 'format-unavailable'))
       reject(upstreamFailure(details))
     })
   })
@@ -213,7 +212,7 @@ export async function download(ticket: MediaTicket, platform: VideoPlatform, run
       '--format', selection, '--merge-output-format', 'mp4', '--output', template, ...source], 10 * 60_000, signal, true)
     const path = join(folder, 'video.mp4')
     const file = await stat(path).catch(() => null)
-    if (!file?.isFile() || file.size <= 0 || file.size > maxMediaBytes) throw new ExtractionFailure('NO_FORMAT')
+    if (!file?.isFile() || file.size <= 0 || file.size > maxMediaBytes) throw new ExtractionFailure('NO_FORMAT', 'missing-file')
     const probe = JSON.parse(await run('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-f', 'mov', '-of', 'json', '-show_entries',
       'stream=codec_type,codec_name,width,height:format=duration', path], 12_000, signal)) as {
       streams: Array<{ codec_type: string, codec_name: string, width?: number, height?: number }>
@@ -221,12 +220,12 @@ export async function download(ticket: MediaTicket, platform: VideoPlatform, run
     }
     const video = probe.streams.find(track => track.codec_type === 'video')
     const audio = probe.streams.find(track => track.codec_type === 'audio')
-    if (Number(probe.format.duration) > maxVideoSeconds + 1) throw new ExtractionFailure('TOO_LONG')
+    if (Number(probe.format.duration) > maxVideoSeconds + 1) throw new ExtractionFailure('TOO_LONG', 'media-check')
     if (video?.codec_name !== 'h264' || (audio && audio.codec_name !== 'aac') || (ticket.audioRequired && !audio)) {
-      throw new ExtractionFailure('NO_FORMAT')
+      throw new ExtractionFailure('NO_FORMAT', 'media-check')
     }
     if (ticket.resolution && (ticket.resolution.width !== video.width || ticket.resolution.height !== video.height)) {
-      throw new ExtractionFailure('NO_FORMAT')
+      throw new ExtractionFailure('NO_FORMAT', 'media-check')
     }
     const stream = createReadStream(path, { signal })
     stream.once('close', () => { void cleanup().catch(() => {}) })

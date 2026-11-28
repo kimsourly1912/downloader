@@ -221,6 +221,13 @@ test('YouTube and TikTok use format selections, normalized links and platform fi
   assert.deepEqual((await extractorCalls()).slice(-2), ['inspect-visionos https://www.youtube.com/watch?v=cdefghijklm',
     'inspect https://www.youtube.com/watch?v=cdefghijklm'])
 
+  // A failed download names its reason in Server-Timing, and the visitor sees the matching message.
+  const oversized = await (await inspect(request, 'https://www.youtube.com/watch?v=defghijklmn')).json()
+  const failed = await request(`/api/downloads/${oversized.qualities[0].id}`)
+  assert.equal(failed.status, 422)
+  assert.match(failed.headers.get('Server-Timing'), /^container;dur=\d+;desc="file-too-large"$/)
+  assert.equal((await failed.json()).data.code, 'NO_FORMAT')
+
   // A key the container no longer holds falls back to a fresh extraction. Malformed keys are rejected.
   const ticket = { url: 'https://www.youtube.com/watch?v=abcdefghijk', selection: '134+140', audioRequired: true, resolution: null }
   const direct = body => fetch(`${origin}/download`, { method: 'POST', body: JSON.stringify({ ...ticket, ...body }) })

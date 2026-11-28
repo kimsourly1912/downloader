@@ -20,7 +20,7 @@ export async function containerExtractor(binding: ExtractorBinding | undefined, 
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal
     }))
     if (!response.ok) {
-      const failure = extractorFailure(response.headers.get('X-Downloader-Error'))
+      const failure = extractorFailure(response.headers.get('X-Downloader-Error'), response.headers.get('X-Extractor-Diagnostic'))
       await response.body?.cancel()
       throw failure
     }
@@ -57,7 +57,13 @@ export async function containerExtractor(binding: ExtractorBinding | undefined, 
       if (direct?.response) return { response: direct.response, platform }
       signal.throwIfAborted()
       const start = performance.now()
-      const response = await invoke('/download', ticket, signal)
+      const response = await invoke('/download', ticket, signal).catch((error: unknown) => {
+        if (signal.aborted) throw error
+        const failure = error instanceof MediaFailure ? error : new MediaFailure('UPSTREAM_ERROR', 'transport')
+        if (!(error instanceof MediaFailure)) console.error('Downloader container download failed', error instanceof Error ? error.name : 'UnknownError')
+        failure.containerMs = Math.round(performance.now() - start)
+        throw failure
+      })
       const headers = new Headers(response.headers)
       const detail = direct ? `;desc="${direct.fallback}"` : ''
       headers.set('Server-Timing', `container;dur=${Math.round(performance.now() - start)}${detail}`)

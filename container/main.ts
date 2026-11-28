@@ -31,6 +31,7 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
   const controller = new AbortController()
   response.once('close', () => controller.abort())
   const deadline = setTimeout(() => { controller.abort(); response.destroy() }, maxTransferMs)
+  const started = performance.now()
   let inspectionStart: number | undefined
   try {
     const parts: Buffer[] = []
@@ -67,12 +68,14 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
     response.setTimeout(60_000, () => { controller.abort(); response.destroy() })
     await pipeline(result.stream, response)
   } catch (error) {
+    const code = error instanceof ExtractionFailure ? error.code : error instanceof SyntaxError ? 'INVALID_LINK' : 'UPSTREAM_ERROR'
+    const diagnostic = error instanceof ExtractionFailure ? error.diagnostic : 'internal'
+    // One line without the link, so container logs show why a job failed without recording what was requested.
+    console.error(`${request.url?.slice(1)} failed code=${code} diagnostic=${diagnostic ?? 'none'} ms=${Math.round(performance.now() - started)}` +
+      ` streaming=${response.headersSent}`)
     if (!response.headersSent && !response.destroyed) {
-      const code = error instanceof ExtractionFailure ? error.code : error instanceof SyntaxError ? 'INVALID_LINK' : 'UPSTREAM_ERROR'
-      if (inspectionStart !== undefined) {
-        response.setHeader('X-Extractor-Ms', Math.round(performance.now() - inspectionStart))
-        if (error instanceof ExtractionFailure && error.diagnostic) response.setHeader('X-Extractor-Diagnostic', error.diagnostic)
-      }
+      if (inspectionStart !== undefined) response.setHeader('X-Extractor-Ms', Math.round(performance.now() - inspectionStart))
+      if (diagnostic) response.setHeader('X-Extractor-Diagnostic', diagnostic)
       response.writeHead(422, { 'X-Downloader-Error': code, 'Cache-Control': 'no-store' }).end()
     } else if (!response.destroyed) response.destroy()
   } finally {

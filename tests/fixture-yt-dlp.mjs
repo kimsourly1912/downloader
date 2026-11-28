@@ -49,6 +49,10 @@ if (args.includes('--dump-single-json')) {
     : source.hostname.endsWith('.tiktok.com') ? 'https://image.tiktokcdn.com/thumb.jpg' : null
   console.log(JSON.stringify({ title: 'Generated clip', duration: 1, formats, thumbnail, webpage_url: source.href }))
 } else {
+  if (source.searchParams.get('v') === 'defghijklmn') {
+    console.error('ERROR: unable to write data: [Errno 27] File too large')
+    process.exit(1)
+  }
   const selection = args[args.indexOf('--format') + 1]
   // Like yt-dlp, a saved inspection only offers the formats it listed.
   const ids = [...selection.matchAll(/format_id="([^"]+)"/g)].map(match => match[1])
