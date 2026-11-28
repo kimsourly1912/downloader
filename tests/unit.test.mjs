@@ -3,7 +3,8 @@ import { once } from 'node:events'
 import { request } from 'node:http'
 import { test } from 'node:test'
 import { publicAddress, startEgressProxy, tunnelTarget } from '../container/egress-proxy.ts'
-import { allowedExtractionHost, facebookUrl, resolveVideoLink, validInfoKey, validSelection } from '../shared/extraction.ts'
+import { allowedExtractionHost, facebookUrl, maxMediaBytes, resolveVideoLink, validInfoKey, validSelection } from '../shared/extraction.ts'
+import { chooseFormats } from '../shared/video-formats.ts'
 
 test('allows supported Facebook URLs and rejects non-video or unsafe destinations', () => {
   for (const path of ['/share/v/Video_Abc/', '/share/r/Reel_Abc/', '/watch/?v=123', '/reel/123/', '/page/videos/123']) {
@@ -106,4 +107,16 @@ test('egress proxy refuses plain HTTP, disallowed targets, and private DNS answe
   const [response] = await once(plain, 'response')
   response.resume()
   assert.equal(response.statusCode, 405)
+})
+
+test('accepts videos up to two hours and only offers qualities that fit the file limit', () => {
+  const format = (id, height, sizeBytes) => ({ id, ext: 'mp4', protocol: 'https', videoCodec: 'avc1.4d401f', audioCodec: 'none',
+    width: height * 16 / 9, height, sizeBytes })
+  const audio = { id: '140', ext: 'm4a', protocol: 'https', videoCodec: 'none', audioCodec: 'mp4a.40.2', sizeBytes: 100 * 1024 * 1024 }
+  const source = duration => ({ title: 'Long video', duration, thumbnail: null, live: false, formats: [
+    format('134', 360, 300 * 1024 * 1024), format('136', 720, 900 * 1024 * 1024), audio] })
+  const choices = chooseFormats(source(2 * 60 * 60))
+  assert.deepEqual(choices.map(choice => [choice.selection, choice.resolution.height]), [['134+140', 360]])
+  assert.ok(choices[0].sizeBytes <= maxMediaBytes)
+  assert.equal(chooseFormats(source(2 * 60 * 60 + 1)), 'TOO_LONG')
 })

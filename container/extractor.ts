@@ -208,7 +208,7 @@ export async function download(ticket: MediaTicket, platform: VideoPlatform, run
     }
     await run(process.env.YTDLP_BIN || 'yt-dlp', [...extractorArgs(platform, runtime), '--downloader', 'native', '--fixup', 'never',
       '--max-filesize', String(maxMediaBytes), '--match-filters', `duration <=? ${maxVideoSeconds} & !is_live`,
-      '--format', selection, '--merge-output-format', 'mp4', '--output', template, ...source], 140_000, signal, true)
+      '--format', selection, '--merge-output-format', 'mp4', '--output', template, ...source], 10 * 60_000, signal, true)
     const path = join(folder, 'video.mp4')
     const file = await stat(path).catch(() => null)
     if (!file?.isFile() || file.size <= 0 || file.size > maxMediaBytes) throw new ExtractionFailure('NO_FORMAT')

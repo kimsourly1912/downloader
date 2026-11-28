@@ -9,7 +9,7 @@ const messages: Record<ExtractorError, readonly [number, string]> = {
   EXPIRED: [410, 'These download options expired. Check the link again.'],
   UNAVAILABLE: [422, 'This video is unavailable without signing in. Try a public video.'],
   NO_FORMAT: [422, 'This quality is unavailable. Check the link again or try another quality.'],
-  TOO_LONG: [422, 'Choose a video no longer than 5 minutes.'],
+  TOO_LONG: [422, 'Choose a video no longer than 2 hours.'],
   TOOL_UNAVAILABLE: [503, 'The download service is unavailable right now.'],
   UPSTREAM_TIMEOUT: [504, 'The video platform took too long to respond. Try again.'],
   UPSTREAM_RESTRICTED: [503, 'The video platform asked our server to sign in. Try another public link.'],
