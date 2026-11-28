@@ -37,8 +37,8 @@ export async function inspectVideo(input: unknown, extractor: VideoExtractor, si
   const result = await extractor.inspect(url, signal)
   onTiming(result.timing)
   if ('failure' in result) throw extractorFailure(result.failure)
-  const { choices, ...source } = result.video
-  const ids = await extractor.remember(choices.map(choice => ({ ...choice, url })))
+  const { choices, infoKey, ...source } = result.video
+  const ids = await extractor.remember(choices.map(choice => ({ ...choice, url, infoKey })))
   return {
     platform,
     title: source.title,

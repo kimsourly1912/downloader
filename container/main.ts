@@ -1,11 +1,16 @@
+import { mkdtemp } from 'node:fs/promises'
 import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import { positiveInteger, resolveVideoLink, validSelection } from '../shared/extraction.ts'
+import { positiveInteger, resolveVideoLink, validInfoKey, validSelection } from '../shared/extraction.ts'
 import type { MediaTicket } from '../shared/extraction.ts'
 import { startEgressProxy } from './egress-proxy.ts'
 import { download, ExtractionFailure, inspect } from './extractor.ts'
+import type { ExtractorRuntime } from './extractor.ts'
 
 const egress = await startEgressProxy()
+const runtime: ExtractorRuntime = { proxy: egress.url, cacheDir: await mkdtemp(join(tmpdir(), 'yt-dlp-cache-')) }
 let active = 0
 
 const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, async (request, response) => {
@@ -41,7 +46,7 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
     if (!link) throw new ExtractionFailure('INVALID_LINK')
     if (request.url === '/inspect') {
       inspectionStart = performance.now()
-      const source = await inspect(link, egress.url, controller.signal)
+      const source = await inspect(link, runtime, controller.signal)
       const extractorMs = Math.round(performance.now() - inspectionStart)
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
         .end(JSON.stringify({ ...source, extractorMs }))
@@ -49,11 +54,12 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
     }
 
     if (!validSelection(data.selection) || typeof data.audioRequired !== 'boolean' ||
-        (data.resolution !== null && (!positiveInteger(data.resolution?.width) || !positiveInteger(data.resolution?.height)))) {
+        (data.resolution !== null && (!positiveInteger(data.resolution?.width) || !positiveInteger(data.resolution?.height))) ||
+        (data.infoKey !== undefined && !validInfoKey(data.infoKey))) {
       throw new ExtractionFailure('NO_FORMAT')
     }
     const result = await download({ url: link.url, selection: data.selection, audioRequired: data.audioRequired,
-      resolution: data.resolution, sizeBytes: null }, link.platform, egress.url, controller.signal)
+      resolution: data.resolution, sizeBytes: null, infoKey: data.infoKey }, link.platform, runtime, controller.signal)
     response.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': result.size,
       'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' })
     await pipeline(result.stream, response)

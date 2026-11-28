@@ -1,4 +1,4 @@
-import { resolveVideoLink } from '#shared/extraction'
+import { resolveVideoLink, validInfoKey } from '#shared/extraction'
 import type { ExtractorBinding, InspectionResult, MediaTicket, SourceVideo } from '#shared/extraction'
 import type { VideoPlatform } from '#shared/types/media'
 import { chooseFormats } from '#shared/video-formats'
@@ -43,7 +43,8 @@ export async function containerExtractor(binding: ExtractorBinding | undefined, 
       const choices = chooseFormats(source)
       const timing = { cache: 'miss' as const, containerMs: Math.round(performance.now() - start) }
       if (typeof choices === 'string') return { failure: choices, timing }
-      return { video: { title: source.title, thumbnail: source.thumbnail, duration: source.duration, choices }, timing }
+      const infoKey = validInfoKey(source.infoKey) ? source.infoKey : undefined
+      return { video: { title: source.title, thumbnail: source.thumbnail, duration: source.duration, infoKey, choices }, timing }
     },
     remember: tickets => binding.remember(tickets),
     async download(id, signal) {

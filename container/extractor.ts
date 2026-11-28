@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { facebookMediaUrl, formatId, maxMediaBytes, maxVideoSeconds, positiveInteger } from '../shared/extraction.ts'
@@ -38,7 +39,9 @@ function upstreamFailure(stderr: string): ExtractionFailure {
   return new ExtractionFailure('UPSTREAM_ERROR', 'unknown')
 }
 
-const commonArgs = ['--ignore-config', '--no-cache-dir', '--no-plugin-dirs', '--no-playlist',
+// The cache dir holds yt-dlp's YouTube player data, such as the preprocessed player script. Reusing it skips a
+// 2.5 MB player download and the slowest part of the Node challenge solver on every run. It never holds media.
+const commonArgs = ['--ignore-config', '--no-plugin-dirs', '--no-playlist',
   '--no-js-runtimes', '--compat-options', 'no-certifi', '--socket-timeout', '15', '--retries', '1', '--fragment-retries', '1']
 const thumbnailHosts: Record<VideoPlatform, RegExp> = {
   facebook: /(^|\.)fbcdn\.net$/,
@@ -46,9 +49,40 @@ const thumbnailHosts: Record<VideoPlatform, RegExp> = {
   tiktok: /(^|\.)tiktokcdn(?:-us)?\.com$/
 }
 
-function extractorArgs(platform: VideoPlatform, proxy: string) {
-  const args = [...commonArgs, '--proxy', proxy]
+export interface ExtractorRuntime {
+  /** Loopback egress proxy URL. Every yt-dlp run must use it. */
+  proxy: string
+  /** Temporary yt-dlp cache directory shared by all runs in this container. */
+  cacheDir: string
+}
+
+function extractorArgs(platform: VideoPlatform, runtime: ExtractorRuntime) {
+  const args = [...commonArgs, '--cache-dir', runtime.cacheDir, '--proxy', runtime.proxy]
   return platform === 'youtube' ? [...args, '--js-runtimes', 'node'] : args
+}
+
+// Inspection results are kept in memory so the download can reuse them with `--load-info-json` instead of
+// extracting the page again. The entries carry the media URLs and the platform cookies that yt-dlp needs.
+// If those URLs no longer work, yt-dlp extracts the video's own page again by itself.
+const infoLifetime = 10 * 60_000
+const maxSavedInfos = 16
+const savedInfos = new Map<string, { url: string, json: string, expiresAt: number }>()
+
+function saveInfo(url: string, json: string) {
+  const now = Date.now()
+  for (const [key, entry] of savedInfos) if (entry.expiresAt <= now) savedInfos.delete(key)
+  if (savedInfos.size >= maxSavedInfos) {
+    const oldest = savedInfos.keys().next().value
+    if (oldest !== undefined) savedInfos.delete(oldest)
+  }
+  const key = randomUUID()
+  savedInfos.set(key, { url, json, expiresAt: now + infoLifetime })
+  return key
+}
+
+function savedInfo(ticket: MediaTicket) {
+  const entry = ticket.infoKey ? savedInfos.get(ticket.infoKey) : undefined
+  return entry && entry.url === ticket.url && entry.expiresAt > Date.now() ? entry.json : undefined
 }
 
 function run(executable: string, args: string[], timeout: number, signal: AbortSignal, limitFile = false) {
@@ -129,22 +163,30 @@ function metadata(value: string, platform: VideoPlatform): SourceVideo {
     duration, thumbnail, live: data.is_live === true || data.live_status === 'is_upcoming' || data.live_status === 'post_live', formats }
 }
 
-export async function inspect(link: VideoLink, proxy: string, signal: AbortSignal) {
+export async function inspect(link: VideoLink, runtime: ExtractorRuntime, signal: AbortSignal): Promise<SourceVideo> {
   const result = await run(process.env.YTDLP_BIN || 'yt-dlp',
-    [...extractorArgs(link.platform, proxy), '--dump-single-json', '--skip-download', '--', link.url], 40_000, signal)
-  return metadata(result, link.platform)
+    [...extractorArgs(link.platform, runtime), '--dump-single-json', '--skip-download', '--', link.url], 40_000, signal)
+  const source = metadata(result, link.platform)
+  return { ...source, infoKey: saveInfo(link.url, result) }
 }
 
-export async function download(ticket: MediaTicket, platform: VideoPlatform, proxy: string, signal: AbortSignal) {
+export async function download(ticket: MediaTicket, platform: VideoPlatform, runtime: ExtractorRuntime, signal: AbortSignal) {
   const folder = await mkdtemp(join(tmpdir(), 'downloader-'))
   const cleanup = () => rm(folder, { recursive: true, force: true })
   try {
     const template = join(folder.replaceAll('%', '%%'), 'video.%(ext)s')
     // yt-dlp reads unquoted numeric format IDs as numbers instead of strings.
     const selection = ticket.selection.split('+').map(id => `all[format_id="${id}"]`).join('+')
-    await run(process.env.YTDLP_BIN || 'yt-dlp', [...extractorArgs(platform, proxy), '--downloader', 'native', '--fixup', 'never',
+    const info = savedInfo(ticket)
+    let source = ['--', ticket.url]
+    if (info) {
+      const infoPath = join(folder, 'info.json')
+      await writeFile(infoPath, info, { mode: 0o600 })
+      source = ['--load-info-json', infoPath]
+    }
+    await run(process.env.YTDLP_BIN || 'yt-dlp', [...extractorArgs(platform, runtime), '--downloader', 'native', '--fixup', 'never',
       '--max-filesize', String(maxMediaBytes), '--match-filters', `duration <=? ${maxVideoSeconds} & !is_live`,
-      '--format', selection, '--merge-output-format', 'mp4', '--output', template, '--', ticket.url], 140_000, signal, true)
+      '--format', selection, '--merge-output-format', 'mp4', '--output', template, ...source], 140_000, signal, true)
     const path = join(folder, 'video.mp4')
     const file = await stat(path).catch(() => null)
     if (!file?.isFile() || file.size <= 0 || file.size > maxMediaBytes) throw new ExtractionFailure('NO_FORMAT')

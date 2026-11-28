@@ -96,7 +96,8 @@ async function setup(t, live) {
     await runtime.dispose()
     runtime = new Miniflare(options)
   }
-  return { request, temp, upstreamRequests, fallbackRequests, inspections, restartWorker }
+  const extractorCalls = async () => (await readFile(join(temp, 'calls.log'), 'utf8').catch(() => '')).trim().split('\n')
+  return { request, origin, temp, upstreamRequests, fallbackRequests, inspections, restartWorker, extractorCalls }
 }
 
 function inspect(request, url) {
@@ -189,7 +190,7 @@ test('shares inspections, gives cache hits fresh tickets, and keeps tickets acro
 })
 
 test('YouTube and TikTok use format selections, normalized links and platform filenames', { timeout: 45_000 }, async t => {
-  const { request, temp, inspections, upstreamRequests } = await setup(t, false)
+  const { request, origin, temp, inspections, upstreamRequests, extractorCalls } = await setup(t, false)
   const links = [
     ['youtube', 'https://youtu.be/abcdefghijk?si=share', 'https://www.youtube.com/watch?v=abcdefghijk', 'i.ytimg.com', [360, 180]],
     // TikTok dimensions are not trusted, so it offers the best source format without a resolution label.
@@ -207,7 +208,20 @@ test('YouTube and TikTok use format selections, normalized links and platform fi
     assert.equal(download.status, 200)
     assert.match(download.headers.get('Content-Disposition'), new RegExp(`^attachment; filename="${platform}-video-[a-f0-9-]{36}\\.mp4"$`))
     assert.deepEqual(Buffer.from(await download.arrayBuffer()), await readFile(join(temp, '360.mp4')))
+    // The download reuses the saved inspection instead of extracting the page again.
+    assert.deepEqual((await extractorCalls()).slice(-2), [`inspect ${normalized}`, `download-info ${normalized}`])
   }
+
+  // A key the container no longer holds falls back to a fresh extraction. Malformed keys are rejected.
+  const ticket = { url: 'https://www.youtube.com/watch?v=abcdefghijk', selection: '134+140', audioRequired: true, resolution: null }
+  const direct = body => fetch(`${origin}/download`, { method: 'POST', body: JSON.stringify({ ...ticket, ...body }) })
+  const unknown = await direct({ infoKey: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' })
+  assert.equal(unknown.status, 200)
+  await unknown.body.cancel()
+  assert.equal((await extractorCalls()).at(-1), `download-url ${ticket.url}`)
+  const malformed = await direct({ infoKey: '../info' })
+  assert.equal(malformed.status, 422)
+  assert.equal(malformed.headers.get('X-Downloader-Error'), 'NO_FORMAT')
   const blocked = await inspect(request, 'https://www.youtube.com/shorts/bcdefghijkl')
   assert.equal(blocked.status, 503)
   assert.equal((await blocked.json()).data.code, 'UPSTREAM_RESTRICTED')
