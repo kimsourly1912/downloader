@@ -221,6 +221,10 @@ test('YouTube and TikTok use format selections, normalized links and platform fi
   assert.deepEqual((await extractorCalls()).slice(-2), ['inspect-visionos https://www.youtube.com/watch?v=cdefghijklm',
     'inspect https://www.youtube.com/watch?v=cdefghijklm'])
 
+  // A format with only a bitrate is estimated from the duration and left out when it would exceed the file limit.
+  const long = await (await inspect(request, 'https://www.youtube.com/watch?v=efghijklmno')).json()
+  assert.deepEqual(long.qualities.map(quality => [quality.resolution.height, quality.sizeBytes]), [[720, 292_000_000]])
+
   // A failed download names its reason in Server-Timing, and the visitor sees the matching message.
   const oversized = await (await inspect(request, 'https://www.youtube.com/watch?v=defghijklmn')).json()
   const failed = await request(`/api/downloads/${oversized.qualities[0].id}`)
