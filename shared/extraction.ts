@@ -155,7 +155,7 @@ export interface MediaTicket extends MediaChoice {
 
 export type ExtractorError = 'INVALID_LINK' | 'BUSY' | 'EXPIRED' | 'UNAVAILABLE' | 'NO_FORMAT' | 'TOO_LONG' | 'TOOL_UNAVAILABLE' | 'UPSTREAM_TIMEOUT' | 'UPSTREAM_ERROR' | 'UPSTREAM_RESTRICTED'
 
-export const extractorDiagnostic = /^(?:http-[45]\d{2}|network-timeout|certificate|tls|connection|challenge|unexpected-content|unknown)$/
+export const extractorDiagnostic = /^(?:http-[45]\d{2}|network-timeout|certificate|tls|connection|challenge|unexpected-content|unknown|client-fallback)$/
 
 export interface InspectionTiming {
   cache: 'hit' | 'miss' | 'shared'

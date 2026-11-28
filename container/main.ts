@@ -46,10 +46,10 @@ const server = createServer({ requestTimeout: 15_000, headersTimeout: 10_000 }, 
     if (!link) throw new ExtractionFailure('INVALID_LINK')
     if (request.url === '/inspect') {
       inspectionStart = performance.now()
-      const source = await inspect(link, runtime, controller.signal)
+      const { source, clientFallback } = await inspect(link, runtime, controller.signal)
       const extractorMs = Math.round(performance.now() - inspectionStart)
       response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
-        .end(JSON.stringify({ ...source, extractorMs }))
+        .end(JSON.stringify({ ...source, extractorMs, clientFallback }))
       return
     }
 
