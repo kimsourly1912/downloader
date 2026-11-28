@@ -16,13 +16,17 @@ export function chooseFormats(source: SourceVideo): MediaChoice[] | ExtractorErr
     if (format.ext !== 'mp4' || (!unspecified(format.videoCodec) && !/^(?:avc|h264)/.test(format.videoCodec || ''))) continue
     let selection = format.id
     let sizeBytes = format.sizeBytes ?? null
+    // An estimated size can only remove a format, so an unknown or exact size is never replaced by a guess.
+    let estimate = sizeBytes ?? format.approxBytes ?? null
     let audioRequired = isAac(format.audioCodec)
     if (format.audioCodec === 'none' && audio) {
       selection += `+${audio.id}`
       sizeBytes = sizeBytes && audio.sizeBytes ? sizeBytes + audio.sizeBytes : null
+      const audioEstimate = audio.sizeBytes ?? audio.approxBytes
+      estimate = estimate && audioEstimate ? estimate + audioEstimate : estimate
       audioRequired = true
     } else if (!unspecified(format.audioCodec) && !audioRequired && (format.audioCodec !== 'none' || knownAudio)) continue
-    if (sizeBytes !== null && sizeBytes > maxMediaBytes) continue
+    if ((sizeBytes ?? estimate ?? 0) > maxMediaBytes) continue
 
     const resolution = positiveInteger(format.width) && positiveInteger(format.height)
       ? { width: format.width, height: format.height } : null
