@@ -119,4 +119,9 @@ test('accepts videos up to two hours and only offers qualities that fit the file
   assert.deepEqual(choices.map(choice => [choice.selection, choice.resolution.height]), [['134+140', 360]])
   assert.ok(choices[0].sizeBytes <= maxMediaBytes)
   assert.equal(chooseFormats(source(2 * 60 * 60 + 1)), 'TOO_LONG')
+
+  // A format with only an estimated size is dropped when the estimate is over the limit, and the estimate is never shown.
+  const estimated = chooseFormats({ ...source(36 * 60), formats: [format('134', 360, 95_000_000),
+    { ...format('137', 1080, undefined), approxBytes: 870_000_000 }, { ...format('136', 720, undefined), approxBytes: 280_000_000 }, audio] })
+  assert.deepEqual(estimated.map(choice => [choice.resolution.height, choice.sizeBytes]), [[720, null], [360, 95_000_000 + audio.sizeBytes]])
 })

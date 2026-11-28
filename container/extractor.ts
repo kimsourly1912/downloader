@@ -149,7 +149,9 @@ function metadata(value: string, platform: VideoPlatform): SourceVideo {
       formats.push({ id: item.format_id, ext: str('ext'), protocol: str('protocol'), videoCodec: str('vcodec'),
         audioCodec: str('acodec'), width: dimensions && positiveInteger(item.width) ? item.width : undefined,
         height: dimensions && positiveInteger(item.height) ? item.height : undefined,
-        sizeBytes: positiveInteger(item.filesize) ? item.filesize : undefined, mediaUrl })
+        sizeBytes: positiveInteger(item.filesize) ? item.filesize : undefined,
+        approxBytes: typeof item.filesize_approx === 'number' && item.filesize_approx >= 1 && Number.isFinite(item.filesize_approx)
+          ? Math.round(item.filesize_approx) : undefined, mediaUrl })
     }
   }
   let thumbnail: string | null = null

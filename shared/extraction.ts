@@ -128,6 +128,8 @@ export interface SourceFormat {
   width?: number
   height?: number
   sizeBytes?: number
+  /** yt-dlp's estimate, used only to drop formats over the file limit. Never shown as the size. */
+  approxBytes?: number
   mediaUrl?: string
 }
 
