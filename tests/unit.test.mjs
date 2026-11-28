@@ -3,7 +3,7 @@ import { once } from 'node:events'
 import { request } from 'node:http'
 import { test } from 'node:test'
 import { publicAddress, startEgressProxy, tunnelTarget } from '../container/egress-proxy.ts'
-import { allowedExtractionHost, facebookUrl, resolveVideoLink, validSelection } from '../shared/extraction.ts'
+import { allowedExtractionHost, facebookUrl, resolveVideoLink, validInfoKey, validSelection } from '../shared/extraction.ts'
 
 test('allows supported Facebook URLs and rejects non-video or unsafe destinations', () => {
   for (const path of ['/share/v/Video_Abc/', '/share/r/Reel_Abc/', '/watch/?v=123', '/reel/123/', '/page/videos/123']) {
@@ -46,6 +46,13 @@ test('only accepts literal IDs and optional audio pairing', () => {
   assert.ok(validSelection('video-a+audio.b'))
   for (const value of ['', '+', 'hd,sd', 'a+b+c', 'a[height=720]', 'a;whoami', '$HOME', 'a b', 'hd\n']) {
     assert.equal(validSelection(value), false)
+  }
+})
+
+test('only accepts saved inspection keys in UUID form', () => {
+  assert.ok(validInfoKey('0f8fad5b-d9cb-469f-a165-70867728950e'))
+  for (const value of [undefined, null, 1, '', '../info.json', '0F8FAD5B-D9CB-469F-A165-70867728950E', '0f8fad5b-d9cb-469f-a165-70867728950e\n']) {
+    assert.equal(validInfoKey(value), false)
   }
 })
 

@@ -1,11 +1,18 @@
 #!/usr/bin/env node
-import { copyFile } from 'node:fs/promises'
+import { appendFile, copyFile, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 const args = process.argv.slice(2)
-const source = new URL(args.at(-1))
+const infoPath = args.includes('--load-info-json') ? args[args.indexOf('--load-info-json') + 1] : undefined
+const info = infoPath ? JSON.parse(await readFile(infoPath, 'utf8')) : undefined
+const source = new URL(info ? info.webpage_url : args.at(-1))
 const youtube = source.hostname === 'www.youtube.com'
 // The adapter must send all extractor traffic through its loopback egress proxy.
 if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(args[args.indexOf('--proxy') + 1] ?? '')) process.exit(3)
+// Reusing the cache dir keeps YouTube player data between runs.
+if (args.includes('--no-cache-dir') || !args[args.indexOf('--cache-dir') + 1]) process.exit(4)
+const mode = args.includes('--dump-single-json') ? 'inspect' : info ? 'download-info' : 'download-url'
+await appendFile(join(process.env.DOWNLOADER_TEST_FIXTURE, 'calls.log'), `${mode} ${source.href}\n`)
 if (source.pathname === '/@test/video/429') {
   console.error('ERROR: [tiktok] Unable to download webpage: HTTP Error 429: Too Many Requests https://www.tiktok.com/?secret=private')
   process.exit(1)
@@ -35,9 +42,12 @@ if (args.includes('--dump-single-json')) {
   }
   const thumbnail = youtube ? 'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg'
     : source.hostname.endsWith('.tiktok.com') ? 'https://image.tiktokcdn.com/thumb.jpg' : null
-  console.log(JSON.stringify({ title: 'Generated clip', duration: 1, formats, thumbnail }))
+  console.log(JSON.stringify({ title: 'Generated clip', duration: 1, formats, thumbnail, webpage_url: source.href }))
 } else {
   const selection = args[args.indexOf('--format') + 1]
+  // Like yt-dlp, a saved inspection only offers the formats it listed.
+  const ids = [...selection.matchAll(/format_id="([^"]+)"/g)].map(match => match[1])
+  if (info && !ids.every(id => info.formats.some(format => format.format_id === id))) process.exit(1)
   const format = selection === 'all[format_id="134"]+all[format_id="140"]' && youtube
     ? '360' : selection.match(/^all\[format_id="(180|360|sd|hd)"\]$/)?.[1]
   if (!format) process.exit(1)

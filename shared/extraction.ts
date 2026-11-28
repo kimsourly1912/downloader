@@ -87,6 +87,11 @@ export function validSelection(value: unknown): value is string {
   return tracks.length <= 2 && tracks.every(track => formatId.test(track))
 }
 
+/** Checks the opaque container key for a saved inspection result. */
+export function validInfoKey(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/.test(value)
+}
+
 export function positiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }
@@ -130,6 +135,8 @@ export interface SourceVideo {
   thumbnail: string | null
   live: boolean
   formats: SourceFormat[]
+  /** Lets the download reuse this inspection inside the same container. Never sent to the client. */
+  infoKey?: string
 }
 
 export interface MediaChoice {
@@ -143,6 +150,7 @@ export interface MediaChoice {
 
 export interface MediaTicket extends MediaChoice {
   url: string
+  infoKey?: string
 }
 
 export type ExtractorError = 'INVALID_LINK' | 'BUSY' | 'EXPIRED' | 'UNAVAILABLE' | 'NO_FORMAT' | 'TOO_LONG' | 'TOOL_UNAVAILABLE' | 'UPSTREAM_TIMEOUT' | 'UPSTREAM_ERROR' | 'UPSTREAM_RESTRICTED'
